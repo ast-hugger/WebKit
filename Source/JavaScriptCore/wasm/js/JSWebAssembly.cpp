@@ -139,6 +139,13 @@ JSC_DEFINE_HOST_FUNCTION(webAssemblyCompileFunc, (JSGlobalObject* globalObject, 
     Vector<uint8_t> source = createSourceBufferFromValue(vm, globalObject, callFrame->argument(0));
     RETURN_IF_EXCEPTION(scope, JSValue::encode(promise->rejectWithCaughtException(globalObject, scope)));
 
+    JSValue compileOptionsArgument = callFrame->argument(1);
+    JSObject* compileOptionsObject = compileOptionsArgument.getObject();
+    if (UNLIKELY(!compileOptionsArgument.isUndefined() && !compileOptionsObject)) {
+        auto error = createTypeError(globalObject, "second argument to WebAssembly.compile must be undefined or an Object"_s, defaultSourceAppender, runtimeTypeForValue(compileOptionsArgument));
+        return JSValue::encode(JSPromise::rejectedPromise(globalObject, error));
+    }
+
     scope.release();
     JSWebAssembly::webAssemblyModuleValidateAsync(globalObject, promise, WTFMove(source));
     return JSValue::encode(promise);
@@ -302,6 +309,13 @@ JSC_DEFINE_HOST_FUNCTION(webAssemblyInstantiateFunc, (JSGlobalObject* globalObje
     if (!importArgument.isUndefined() && !importObject) [[unlikely]]
         return JSValue::encode(JSPromise::rejectedPromise(globalObject, createTypeError(globalObject, "second argument to WebAssembly.instantiate must be undefined or an Object"_s, defaultSourceAppender, runtimeTypeForValue(importArgument))));
 
+    JSValue compileOptionsArgument = callFrame->argument(2);
+    JSObject* compileOptionsObject = compileOptionsArgument.getObject();
+    if (UNLIKELY(!compileOptionsArgument.isUndefined() && !compileOptionsObject)) {
+        auto error = createTypeError(globalObject, "third argument to WebAssembly.instantiate must be undefined or an Object"_s, defaultSourceAppender, runtimeTypeForValue(compileOptionsArgument));
+        return JSValue::encode(JSPromise::rejectedPromise(globalObject, error));
+    }
+    
     JSValue firstArgument = callFrame->argument(0);
     if (firstArgument.inherits<JSWebAssemblyModule>())
         instantiate(vm, globalObject, promise, jsCast<JSWebAssemblyModule*>(firstArgument), importObject, JSWebAssemblyInstance::createPrivateModuleKey(), Resolve::WithInstance, Wasm::CreationMode::FromJS, /* alwaysAsync */ true);
@@ -320,6 +334,14 @@ JSC_DEFINE_HOST_FUNCTION(webAssemblyValidateFunc, (JSGlobalObject* globalObject,
     // https://bugs.webkit.org/show_bug.cgi?id=166015
     Vector<uint8_t> source = createSourceBufferFromValue(vm, globalObject, callFrame->argument(0));
     RETURN_IF_EXCEPTION(scope, encodedJSValue());
+
+    JSValue compileOptionsArgument = callFrame->argument(1);
+    JSObject* compileOptionsObject = compileOptionsArgument.getObject();
+    if (UNLIKELY(!compileOptionsArgument.isUndefined() && !compileOptionsObject)) {
+        auto error = createTypeError(globalObject, "second argument to WebAssembly.validate must be undefined or an Object"_s, defaultSourceAppender, runtimeTypeForValue(compileOptionsArgument));
+        return JSValue::encode(throwException(globalObject, scope, error));
+    }
+
     auto validationResult = Wasm::Module::validateSync(vm, WTFMove(source));
     return JSValue::encode(jsBoolean(validationResult.has_value()));
 }

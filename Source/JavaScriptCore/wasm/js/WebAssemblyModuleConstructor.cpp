@@ -279,7 +279,14 @@ JSC_DEFINE_HOST_FUNCTION(constructJSWebAssemblyModule, (JSGlobalObject* globalOb
     Vector<uint8_t> source = createSourceBufferFromValue(vm, globalObject, callFrame->argument(0));
     RETURN_IF_EXCEPTION(scope, { });
 
-    RELEASE_AND_RETURN(scope, JSValue::encode(WebAssemblyModuleConstructor::createModule(globalObject, callFrame, WTFMove(source))));
+    JSValue compileOptionsArgument = callFrame->argument(1);
+    JSObject* compileOptionsObject = compileOptionsArgument.getObject();
+    if (UNLIKELY(!compileOptionsArgument.isUndefined() && !compileOptionsObject)) {
+        auto error = createTypeError(globalObject, "second argument to WebAssembly.Module must be undefined or an Object"_s, defaultSourceAppender, runtimeTypeForValue(compileOptionsArgument));
+        return JSValue::encode(throwException(globalObject, scope, error));
+    }
+
+    RELEASE_AND_RETURN(scope, JSValue::encode(WebAssemblyModuleConstructor::createModule(globalObject, callFrame, WTFMove(source), compileOptionsObject)));
 }
 
 JSC_DEFINE_HOST_FUNCTION(callJSWebAssemblyModule, (JSGlobalObject* globalObject, CallFrame*))
@@ -289,7 +296,7 @@ JSC_DEFINE_HOST_FUNCTION(callJSWebAssemblyModule, (JSGlobalObject* globalObject,
     return JSValue::encode(throwConstructorCannotBeCalledAsFunctionTypeError(globalObject, scope, "WebAssembly.Module"_s));
 }
 
-JSWebAssemblyModule* WebAssemblyModuleConstructor::createModule(JSGlobalObject* globalObject, CallFrame* callFrame, Vector<uint8_t>&& buffer)
+JSWebAssemblyModule* WebAssemblyModuleConstructor::createModule(JSGlobalObject* globalObject, CallFrame* callFrame, Vector<uint8_t>&& buffer, JSObject* compileOptions)
 {
     VM& vm = globalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
@@ -303,6 +310,12 @@ JSWebAssemblyModule* WebAssemblyModuleConstructor::createModule(JSGlobalObject* 
         throwException(globalObject, scope, createJSWebAssemblyCompileError(globalObject, vm, result.error()));
         return nullptr;
     }
+
+    UNUSED_PARAM(compileOptions); // FIXME for now
+    // if (compileOptions && !WebAssemblyModuleConstructor::validateBuiltinsAndImportedStrings(globalObject, result, compileOptions))
+    //     throwException(globalObject, scope, createJSWebAssemblyCompileError(globalObject, vm, "compile options validation failed"_s)); // FIXME: produce a better error message
+    //     return nullptr;
+    // }
 
     RELEASE_AND_RETURN(scope, JSWebAssemblyModule::create(vm, structure, WTFMove(result.value())));
 }
