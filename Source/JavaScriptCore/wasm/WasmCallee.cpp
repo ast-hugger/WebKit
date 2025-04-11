@@ -125,6 +125,9 @@ inline void Callee::runWithDowncast(const Func& func)
     case CompilationMode::WasmToJSMode:
         func(static_cast<WasmToJSCallee*>(this));
         break;
+    case CompilationMode::IntrinsicMode:
+        func(static_cast<IntrinsicCallee*>(this));
+        break;
     }
 }
 
@@ -586,6 +589,12 @@ BBQCallee::~BBQCallee()
 }
 
 #endif
+
+IntrinsicCallee::IntrinsicCallee(ImplementationFunctionPtr implFunction, FunctionSpaceIndex index, std::pair<const Name*, RefPtr<NameSection>>&& name)
+    : Callee(Wasm::CompilationMode::IntrinsicMode, index, WTFMove(name))
+    , m_cppFunction(implFunction)
+{
+}
 
 } // namespace JSC::Wasm
 

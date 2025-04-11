@@ -172,6 +172,21 @@ struct ModuleInformation final : public ThreadSafeRefCounted<ModuleInformation> 
     }
     size_t totalFunctionSize() const { return m_totalFunctionSize; }
 
+    const String* importedStringConstants() const {
+        return m_importedStringConstants ? &*m_importedStringConstants : nullptr;
+    }
+    Vector<const String*> builtinSets() const;
+
+    void setImportedStringConstants(std::optional<String>&& constants)
+    {
+        m_importedStringConstants = WTFMove(constants);
+    }
+
+    void setBuiltinSets(Vector<String>&& builtinSets)
+    {
+        m_builtinSets = WTFMove(builtinSets);
+    }
+
     // FIXME: These should probably be FixedVectors.
     Vector<Import> imports;
     Vector<TypeIndex> importFunctionTypeIndices;
@@ -209,6 +224,12 @@ struct ModuleInformation final : public ThreadSafeRefCounted<ModuleInformation> 
     mutable FixedBitVector m_referencedFunctions;
     mutable FixedBitVector m_clobberingTailCalls;
     size_t m_totalFunctionSize { 0 };
+
+private:
+    // The following two fields hold isolated copies of Strings (refcount of 1).
+    // Multithreaded code may access these Strings via pointers, but must not make copies.
+    std::optional<String> m_importedStringConstants;
+    Vector<String> m_builtinSets;
 };
 
     

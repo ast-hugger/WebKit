@@ -576,6 +576,24 @@ private:
 using LLIntCallees = ThreadSafeRefCountedFixedVector<Ref<LLIntCallee>>;
 using IPIntCallees = ThreadSafeRefCountedFixedVector<Ref<IPIntCallee>>;
 
+class IntrinsicCallee final : public Callee {
+    WTF_MAKE_COMPACT_TZONE_ALLOCATED(IntrinsicCallee);
+    friend class Callee;
+
+public:
+    using ImplementationFunctionPtr = void (*)();
+
+protected:
+    IntrinsicCallee(ImplementationFunctionPtr, FunctionSpaceIndex, std::pair<const Name*, RefPtr<NameSection>>&&);
+
+    CodePtr<WasmEntryPtrTag> entrypointImpl() const { return { }; }
+    std::tuple<void*, void*> rangeImpl() const { return { nullptr, nullptr }; }
+    RegisterAtOffsetList* calleeSaveRegistersImpl() { return nullptr; }
+
+private:
+    ImplementationFunctionPtr m_cppFunction;
+};
+
 } } // namespace JSC::Wasm
 
 #endif // ENABLE(WEBASSEMBLY)

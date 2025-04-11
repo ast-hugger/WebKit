@@ -53,6 +53,13 @@ Module::Module(IPIntPlan& plan)
 {
 }
 
+
+void Module::setBuiltinSetsAndImportedStringConstants(Vector<String>&& builtinSets, std::optional<String>&& importedStringConstants)
+{
+    m_moduleInformation.get().setBuiltinSets(WTFMove(builtinSets));
+    m_moduleInformation.get().setImportedStringConstants(WTFMove(importedStringConstants));
+}
+
 Module::~Module() = default;
 
 Wasm::TypeIndex Module::typeIndexFromFunctionIndexSpace(FunctionSpaceIndex functionIndexSpace) const

@@ -30,6 +30,7 @@
 
 #include "ArrayBuffer.h"
 #include "ButterflyInlines.h"
+#include "IteratorOperations.h"
 #include "JSArrayBuffer.h"
 #include "JSArrayBufferViewInlines.h"
 #include "JSCJSValueInlines.h"
@@ -296,7 +297,67 @@ JSC_DEFINE_HOST_FUNCTION(callJSWebAssemblyModule, (JSGlobalObject* globalObject,
     return JSValue::encode(throwConstructorCannotBeCalledAsFunctionTypeError(globalObject, scope, "WebAssembly.Module"_s));
 }
 
-JSWebAssemblyModule* WebAssemblyModuleConstructor::createModule(JSGlobalObject* globalObject, CallFrame* callFrame, Vector<uint8_t>&& buffer, JSObject* compileOptions)
+static std::optional<String> extractImportedStringConstants(JSGlobalObject* globalObject, JSObject* optionsObject)
+{
+    VM& vm = globalObject->vm();
+    JSValue importedStringConstantsValue = optionsObject->get(globalObject, PropertyName(Identifier::fromString(vm, "importedStringConstants"_s)));
+    if (importedStringConstantsValue.isString()) {
+        auto contents = asString(importedStringConstantsValue)->value(globalObject);
+        return contents.data.isolatedCopy();
+    } else {
+        return std::nullopt;
+    }
+}
+
+static Vector<String> extractBuiltinSets(JSGlobalObject* globalObject, JSObject* optionsObject)
+{
+    VM& vm = globalObject->vm();
+    Vector<String> result;
+    JSValue builtinsValue = optionsObject->get(globalObject, PropertyName(Identifier::fromString(vm, "builtins"_s)));
+    forEachInIterable(globalObject, builtinsValue, [&] (VM&, JSGlobalObject* globalObject, JSValue nextValue) {
+        if (nextValue.isString()) {
+            auto contents = asString(nextValue)->value(globalObject);
+            result.append(contents.data.isolatedCopy());
+        }
+    });
+    return result;
+}
+
+/**
+ * See https://webassembly.github.io/js-string-builtins/js-api/#validate-builtins-and-imported-string-for-a-webassembly-module
+ *
+ * Or in plain English:
+ * 1) Make sure there aren't any duplicates in builtinSetNames.
+ * 2) For all imports of the module:
+ *  - if the import module name matches importedStringModule, the import type must match `global const (ref extern)`.
+ *  - if the import module name matches the qualified name of an existing builtin named in builtInSet,
+ *    and the import name matches the name of a builtin in that set, the import type must match `func |builtinFuncType|`
+ *  - otherwise (a builtin set by the import module name or the builtin in by the import name not found), validation succeeds.
+ *
+ * Also stores the validated data in the ModuleInformation.
+ */
+static bool validateBuiltinsAndImportedStrings(JSGlobalObject* globalObject, Wasm::Module::ValidationResult& result, JSObject* optionsObject)
+{
+    ASSERT(result.has_value());
+    if (!optionsObject) return true;
+
+    std::optional<String> importedStringConstants = extractImportedStringConstants(globalObject, optionsObject);
+    Vector<String> builtinSets = extractBuiltinSets(globalObject, optionsObject);
+    Wasm::Module& module = result.value().get();
+    VM& vm = globalObject->vm();
+
+    for (const auto& import : module.moduleInformation().imports) {
+        Identifier moduleName = Identifier::fromString(vm, makeAtomString(import.module));
+        Identifier fieldName = Identifier::fromString(vm, makeAtomString(import.field));
+        // FIXME: actually validate
+    }
+
+    module.setBuiltinSetsAndImportedStringConstants(WTFMove(builtinSets), WTFMove(importedStringConstants));
+    return true;
+}
+
+
+JSWebAssemblyModule* WebAssemblyModuleConstructor::createModule(JSGlobalObject* globalObject, CallFrame* callFrame, Vector<uint8_t>&& buffer, JSObject* optionsObject)
 {
     VM& vm = globalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
@@ -311,11 +372,10 @@ JSWebAssemblyModule* WebAssemblyModuleConstructor::createModule(JSGlobalObject* 
         return nullptr;
     }
 
-    UNUSED_PARAM(compileOptions); // FIXME for now
-    // if (compileOptions && !WebAssemblyModuleConstructor::validateBuiltinsAndImportedStrings(globalObject, result, compileOptions))
-    //     throwException(globalObject, scope, createJSWebAssemblyCompileError(globalObject, vm, "compile options validation failed"_s)); // FIXME: produce a better error message
-    //     return nullptr;
-    // }
+    if (!validateBuiltinsAndImportedStrings(globalObject, result, optionsObject)) {
+        throwException(globalObject, scope, createJSWebAssemblyCompileError(globalObject, vm, result.error()));
+        return nullptr;
+    }
 
     RELEASE_AND_RETURN(scope, JSWebAssemblyModule::create(vm, structure, WTFMove(result.value())));
 }

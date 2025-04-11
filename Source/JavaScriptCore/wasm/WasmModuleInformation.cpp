@@ -39,6 +39,16 @@ ModuleInformation::ModuleInformation()
 
 ModuleInformation::~ModuleInformation() = default;
 
+Vector<const String*> ModuleInformation::builtinSets() const 
+{
+    Vector<const String*> result;
+    for (const auto& name : m_builtinSets) {
+        result.append(&name);
+    }
+    return result;
+}
+
+
 } } // namespace JSC::Wasm
 
 #endif // ENABLE(WEBASSEMBLY)

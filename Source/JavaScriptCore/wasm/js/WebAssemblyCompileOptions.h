@@ -7,22 +7,26 @@
 
 namespace JSC {
 
+/**
+ * Captures the information extracted in the optional compilation options argument added by the
+ * js-string builtins proposal to `WebAssembly.Module` constructor and a number of other APIs. 
+ * The contents of the original JSStrings are deep-copied into isolated copies fully owned by this
+ * object. The intent is to eventually move these isolated copies into a `Wasm::Module` to be
+ * fully owned by it, where they can be treated as read-only data without touching string refcounts.
+ */
 class WebAssemblyCompileOptions {
 public:
-    /// Create an instance and populate it from the given optionsObject.
     static WebAssemblyCompileOptions create(JSGlobalObject*, JSObject* optionsObject);
 
     ~WebAssemblyCompileOptions() = default;
 
-    /// Return a pointer to the 'importedStringConstants' option value, or a `nullptr` if the option was not specified.
-    /// The recipient MUST NOT create additional references to the string.
     const String* importedStringConstants() const;
-    /// Return a vector of pointers to the names specified in the 'builtins' option.
-    /// The recipient MUST NOT create additional references to the strings.
     Vector<const String*> builtins() const;
-    
-    /// As defined by the standard's Editor's Draft of 23 August 2024, 
-    /// "to validate builtins and imported string for a WebAssembly module".
+
+    /**
+     * Implements the "to validate builtins and imported string for a WebAssembly module" algorithm
+     * of the proposal.
+     */
     bool validateBuiltinsAndImportedString(Wasm::ModuleInformation& module) const;
 
     private:
