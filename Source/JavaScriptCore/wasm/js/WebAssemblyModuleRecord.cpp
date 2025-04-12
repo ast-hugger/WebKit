@@ -23,6 +23,8 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <stdio.h>
+
 #include "config.h"
 #include "WebAssemblyModuleRecord.h"
 
@@ -118,11 +120,48 @@ Synchronousness WebAssemblyModuleRecord::link(JSGlobalObject* globalObject, JSVa
     return Synchronousness::Sync;
 }
 
+static bool isBuiltinSetName(Identifier& moduleName)
+{
+    return moduleName == "wasm:test"; // FIXME
+}
+
+static JSGlobalObject* savedGlobalObjectHack;
+
+static EncodedJSValue foo(void* arg1, void* arg2, void* arg3, void* arg4)
+{
+    printf("arg1=%p\n", arg1);
+    printf("arg2=%p\n", arg2);
+    printf("arg3=%p\n", arg3);
+    printf("arg4=%p\n", arg4);
+    printf("globalObject=%p\n\n", savedGlobalObjectHack);
+
+    VM& vm = savedGlobalObjectHack->vm();
+    return JSValue::encode(jsString(vm, String::fromLatin1("Hello from a fake intrinsic!")));
+}
+
+static void initializeIntrinsicImport(JSGlobalObject* globalObject, WebAssemblyModuleRecord* record, const Wasm::Import& import, const Identifier& moduleName, const Identifier& fieldName)
+{
+    UNUSED_PARAM(globalObject);
+    UNUSED_PARAM(moduleName);
+    UNUSED_PARAM(fieldName);
+
+    // auto* callee = new Wasm::IntrinsicCallee((void (*)())foo, Wasm::FunctionSpaceIndex(import.kindIndex), { nullptr, nullptr }); // FIXME just leaking it for now
+    auto* info = record->m_instance->importFunctionInfo(import.kindIndex);
+    // auto* ptr = untagCodePtr<CFunctionPtrTag>(foo);
+    info->importFunctionStub = foo; // tagCodePtr<WasmEntryPtrTag>(ptr);
+    // info->boxedCallee = CalleeBits::encodeNativeCallee(callee);
+    info->boxedWasmCalleeLoadLocation = &Wasm::NullWasmCallee; // &info->boxedCallee;
+    info->entrypointLoadLocation = &info->importFunctionStub;
+    info->typeIndex = record->m_instance->moduleInformation().importFunctionTypeIndices[import.kindIndex];
+}
+
 // https://webassembly.github.io/spec/js-api/#read-the-imports
 void WebAssemblyModuleRecord::initializeImports(JSGlobalObject* globalObject, JSObject* importObject, Wasm::CreationMode creationMode)
 {
     VM& vm = globalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
+
+    savedGlobalObjectHack = globalObject;
 
     RELEASE_ASSERT(m_instance);
 
@@ -140,6 +179,13 @@ void WebAssemblyModuleRecord::initializeImports(JSGlobalObject* globalObject, JS
     for (const auto& import : moduleInformation.imports) {
         Identifier moduleName = Identifier::fromString(vm, makeAtomString(import.module));
         Identifier fieldName = Identifier::fromString(vm, makeAtomString(import.field));
+
+        if (isBuiltinSetName(moduleName)) {
+            // Intrinsic "imports" don't resolve to JSObjects from the importObject
+            initializeIntrinsicImport(globalObject, this, import, moduleName, fieldName);
+            continue;
+        }
+
         JSValue value;
         if (creationMode == Wasm::CreationMode::FromJS) {
             // 1. Let o be the resultant value of performing Get(importObject, i.module_name).
@@ -236,6 +282,7 @@ void WebAssemblyModuleRecord::initializeImports(JSGlobalObject* globalObject, JS
             // Note: adding the JSCell to the instance list fulfills closure requirements b. above (the WebAssembly.Instance wil be kept alive) and v. below (the JSFunction).
 
             auto* info = m_instance->importFunctionInfo(import.kindIndex);
+            info->importFunctionStub = nullptr; // HACK: expected by finalizeCreation as a signal to do the usual work
             info->boxedWasmCalleeLoadLocation = boxedWasmCalleeLoadLocation;
             info->targetInstance.setMayBeNull(vm, m_instance.get(), calleeInstance);
             info->entrypointLoadLocation = entrypointLoadLocation;

@@ -228,16 +228,19 @@ void JSWebAssemblyInstance::finalizeCreation(VM& vm, JSGlobalObject* globalObjec
         auto functionSpaceIndex = FunctionSpaceIndex(importFunctionNum);
         auto* info = importFunctionInfo(importFunctionNum);
         if (!info->targetInstance) {
-            info->importFunctionStub = module().importFunctionStub(functionSpaceIndex);
-            importCallees.append(adoptRef(*new WasmToJSCallee(functionSpaceIndex, { nullptr, nullptr })));
-            ASSERT(*info->boxedWasmCalleeLoadLocation == CalleeBits::nullCallee());
-            info->boxedCallee = CalleeBits::encodeNativeCallee(importCallees.last().ptr());
-            info->boxedWasmCalleeLoadLocation = &info->boxedCallee;
+            // HACK: for intrinsics, the stub and other info is set by initializeImports()
+            if (!info->importFunctionStub) {
+                info->importFunctionStub = module().importFunctionStub(functionSpaceIndex);
+                importCallees.append(adoptRef(*new WasmToJSCallee(functionSpaceIndex, { nullptr, nullptr })));
+                ASSERT(*info->boxedWasmCalleeLoadLocation == CalleeBits::encodeNullCallee());
+                info->boxedCallee = CalleeBits::encodeNativeCallee(importCallees.last().ptr());
+                info->boxedWasmCalleeLoadLocation = &info->boxedCallee;
 
-            auto callLinkInfo = makeUnique<DataOnlyCallLinkInfo>();
-            callLinkInfo->initialize(vm, nullptr, CallLinkInfo::CallType::Call, CodeOrigin { });
-            WTF::storeStoreFence(); // CallLinkInfo is visited by concurrent GC already, thus, when we add it, we must ensure that it is fully initialized.
-            info->callLinkInfo = WTFMove(callLinkInfo);
+                auto callLinkInfo = makeUnique<DataOnlyCallLinkInfo>();
+                callLinkInfo->initialize(vm, nullptr, CallLinkInfo::CallType::Call, CodeOrigin { });
+                WTF::storeStoreFence(); // CallLinkInfo is visited by concurrent GC already, thus, when we add it, we must ensure that it is fully initialized.
+                info->callLinkInfo = WTFMove(callLinkInfo);
+            }
             vm.writeBarrier(this); // Materialized CallLinkInfo and we need rescan of JSWebAssemblyInstance.
         } else {
             info->importFunctionStub = wasmCalleeGroup->wasmToWasmExitStub(functionSpaceIndex);
