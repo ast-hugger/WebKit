@@ -175,18 +175,10 @@ struct ModuleInformation final : public ThreadSafeRefCounted<ModuleInformation> 
     const String* importedStringConstants() const {
         return m_importedStringConstants ? &*m_importedStringConstants : nullptr;
     }
-    Vector<const String*> builtinSets() const;
-    bool builtinSetsInclude(const Identifier& builtinSetName) const;
+    /// Indicate whether a builtin set by the given qualified name is enabled for this module.
+    bool builtinSetsInclude(const String& qualifiedName) const;
 
-    void setImportedStringConstants(std::optional<String>&& constants)
-    {
-        m_importedStringConstants = WTFMove(constants);
-    }
-
-    void setBuiltinSets(Vector<String>&& builtinSets)
-    {
-        m_builtinSets = WTFMove(builtinSets);
-    }
+    void setCompileOptions(std::optional<String>&& constants, Vector<String>&& qualifiedBuiltinSetNames);
 
     // FIXME: These should probably be FixedVectors.
     Vector<Import> imports;

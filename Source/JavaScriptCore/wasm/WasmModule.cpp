@@ -54,10 +54,9 @@ Module::Module(IPIntPlan& plan)
 }
 
 
-void Module::setBuiltinSetsAndImportedStringConstants(Vector<String>&& builtinSets, std::optional<String>&& importedStringConstants)
+void Module::setCompileOptions(std::optional<String>&& importedStringConstants, Vector<String>&& builtinSets)
 {
-    m_moduleInformation.get().setBuiltinSets(WTFMove(builtinSets));
-    m_moduleInformation.get().setImportedStringConstants(WTFMove(importedStringConstants));
+    m_moduleInformation.get().setCompileOptions(WTFMove(importedStringConstants), WTFMove(builtinSets));
 }
 
 Module::~Module() = default;

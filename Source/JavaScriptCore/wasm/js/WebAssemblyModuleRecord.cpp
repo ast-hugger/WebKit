@@ -23,6 +23,8 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <iostream> // exploration only; delete
+
 #include "config.h"
 #include "WebAssemblyModuleRecord.h"
 
@@ -119,11 +121,11 @@ Synchronousness WebAssemblyModuleRecord::link(JSGlobalObject* globalObject, JSVa
     return Synchronousness::Sync;
 }
 
-static WebAssemblyBuiltinSet* findEnabledBuiltinSet(const String& qualifiedBuiltinSetName, const Wasm::ModuleInformation& moduleInformation)
+static WebAssemblyBuiltinSet* findEnabledBuiltinSet(const String& qualifiedName, const Wasm::ModuleInformation& moduleInformation)
 {
-    UNUSED_PARAM(moduleInformation);
-    // FIXME: check first if the set is enabled for the module
-    return WebAssemblyBuiltinSet::findByQualifiedName(qualifiedBuiltinSetName);
+    if (!moduleInformation.builtinSetsInclude(qualifiedName))
+        return nullptr;
+    return WebAssemblyBuiltinSet::findByQualifiedName(qualifiedName);
 }
 
 static void initializeBuiltinImport(VM& vm, WriteBarrier<JSWebAssemblyInstance>& instance, unsigned importIndex, WebAssemblyBuiltin* builtin)
@@ -161,6 +163,10 @@ void WebAssemblyModuleRecord::initializeImports(JSGlobalObject* globalObject, JS
 
         WebAssemblyBuiltinSet* builtinSet = findEnabledBuiltinSet(moduleName.string().string(), moduleInformation);
         if (builtinSet) {
+            printf("type index = %u\n", import.kindIndex);
+            auto sig = moduleInformation.typeSignatures[import.kindIndex]->as<Wasm::FunctionSignature>();
+            UNUSED_VARIABLE(sig);
+
             WebAssemblyBuiltin* builtin = builtinSet->findBuiltin(fieldName.string().string());
             if (!builtin) {
                 return exception(createTypeError(globalObject, importFailMessage(import, "import"_s, "is not a valid builtin reference"_s)));

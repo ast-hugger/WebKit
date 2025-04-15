@@ -18,9 +18,8 @@ WebAssemblyBuiltin* WebAssemblyBuiltinSet::findBuiltin(const String& name) const
     return nullptr;
 }
 
-
 /*
-        Builtins importable as "wasm:js-string"
+        wasm:js-string builtin set
 */
 
 static EncodedJSValue jsStringHello()
@@ -29,14 +28,14 @@ static EncodedJSValue jsStringHello()
     JSWebAssemblyInstance* wasmInstance = FETCH_WASM_INSTANCE(frame);
     VM* vm = &wasmInstance->vm();
 
-    return JSValue::encode(jsString(*vm, String::fromLatin1("Hello from a fake intrinsic!")));
+    return JSValue::encode(jsString(*vm, String::fromLatin1("Hello from a builtin!")));
 }
 
-static WebAssemblyBuiltin builtinJsStringHello { ASCIILiteral("hello"), jsStringHello };
+static WebAssemblyBuiltin builtinJsStringHello = { ASCIILiteral("hello"), jsStringHello };
 
 static std::array<WebAssemblyBuiltin*, 1> allJsStringBuiltins = { &builtinJsStringHello };
 
-static WebAssemblyBuiltinSet jsStringBuiltinSet { ASCIILiteral("js-string"), ASCIILiteral("wasm:js-string"), std::span(allJsStringBuiltins) };
+static WebAssemblyBuiltinSet jsStringBuiltinSet = { ASCIILiteral("js-string"), ASCIILiteral("wasm:js-string"), std::span(allJsStringBuiltins) };
 
 /*
         All builtin sets

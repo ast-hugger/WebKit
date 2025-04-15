@@ -227,9 +227,9 @@ void JSWebAssemblyInstance::finalizeCreation(VM& vm, JSGlobalObject* globalObjec
     for (unsigned importFunctionNum = 0; importFunctionNum < numImportFunctions(); ++importFunctionNum) {
         auto functionSpaceIndex = FunctionSpaceIndex(importFunctionNum);
         auto* info = importFunctionInfo(importFunctionNum);
-        // Imports fall into 3 categories:
-        // 1. If targetInstance is null, the import is a JS object supplied via importsObject
-        // 2. If targetInstance is non-null but importFunctionStub is null, the instance is a wasm function
+        // Import function infos fall into 3 categories:
+        // 1. If targetInstance is null, the import is a JS function supplied via importsObject
+        // 2. If targetInstance is non-null but importFunctionStub is null, the import is a regular wasm function
         // 3. If both targetInstance and importFunctionStull are non-null, the import is a builtin
         if (!info->targetInstance) {
             info->importFunctionStub = module().importFunctionStub(functionSpaceIndex);

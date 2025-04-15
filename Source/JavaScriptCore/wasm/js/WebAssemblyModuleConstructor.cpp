@@ -42,6 +42,7 @@
 #include "ObjectConstructor.h"
 #include "WasmModule.h"
 #include "WasmModuleInformation.h"
+#include "WebAssemblyBuiltin.h"
 #include "WebAssemblyModulePrototype.h"
 #include <wtf/StdLibExtras.h>
 #include <wtf/text/MakeString.h>
@@ -309,7 +310,7 @@ static std::optional<String> extractImportedStringConstants(JSGlobalObject* glob
     }
 }
 
-static Vector<String> extractBuiltinSets(JSGlobalObject* globalObject, JSObject* optionsObject)
+static Vector<String> extractBuiltins(JSGlobalObject* globalObject, JSObject* optionsObject)
 {
     VM& vm = globalObject->vm();
     Vector<String> result;
@@ -317,16 +318,63 @@ static Vector<String> extractBuiltinSets(JSGlobalObject* globalObject, JSObject*
     forEachInIterable(globalObject, builtinsValue, [&] (VM&, JSGlobalObject* globalObject, JSValue nextValue) {
         if (nextValue.isString()) {
             auto contents = asString(nextValue)->value(globalObject);
-            result.append(contents.data.isolatedCopy());
+            result.append(contents.data);
         }
     });
     return result;
 }
 
+static bool namesInclude(const String& expected, Vector<String>& names)
+{
+    // Just a plain linear search is okay, the list of builtin sets is short.
+    for (auto& name : names) {
+        if (name == expected)
+            return true;
+    }
+    return false;
+}
+
+static Vector<String> qualifyAndIsolate(Vector<String>& simpleNames)
+{
+    Vector<String> result;
+    for (auto& simpleName : simpleNames) {
+        String qualified = makeString("wasm:"_s, simpleName);
+        ASSERT(qualified.impl()->refCount() == 1); // should be isolated by construction
+        result.append(qualified);
+    }
+    return result;
+}
+
+/**
+ * See https://webassembly.github.io/js-string-builtins/js-api/#validate-an-import-for-builtins
+ *
+ * In plain English:
+ * - if the import module name is not listed in builtinSetNames: valid
+ * - if import module name is listed, but there is no such builtin set: valid
+ * - if the set does not contain a builtin whose name matches the import name: valid
+ * - builtin type must match the import type
+ */
+static bool validateImportForBuiltinSetNames(const Wasm::Import& import, Vector<String>& builtinSetNames)
+{
+    String moduleName = makeString(import.module);
+    if (!namesInclude(moduleName, builtinSetNames))
+        return true;
+    WebAssemblyBuiltinSet *builtinSet = WebAssemblyBuiltinSet::findBySimpleName(moduleName);
+    if (!builtinSet)
+        return true;
+    String importName = makeString(import.field);
+    // Even if the named builtin set exists, it should only be checked if listed
+    WebAssemblyBuiltin* builtin = builtinSet->findBuiltin(importName);
+    if (!builtin)
+        return true;
+    // FIXME: should compare the types here; builtins are not tracking types yet
+    return true;
+}
+
 /**
  * See https://webassembly.github.io/js-string-builtins/js-api/#validate-builtins-and-imported-string-for-a-webassembly-module
  *
- * Or in plain English:
+ * In plain English:
  * 1) Make sure there aren't any duplicates in builtinSetNames.
  * 2) For all imports of the module:
  *  - if the import module name matches importedStringModule, the import type must match `global const (ref extern)`.
@@ -342,17 +390,17 @@ static bool validateBuiltinsAndImportedStrings(JSGlobalObject* globalObject, Was
     if (!optionsObject) return true;
 
     std::optional<String> importedStringConstants = extractImportedStringConstants(globalObject, optionsObject);
-    Vector<String> builtinSets = extractBuiltinSets(globalObject, optionsObject);
+    // The extracted builtin set names will have the "wasm:" qualifying prefix
+    Vector<String> simpleBuiltinSetNames = extractBuiltins(globalObject, optionsObject);
     Wasm::Module& module = result.value().get();
-    VM& vm = globalObject->vm();
 
     for (const auto& import : module.moduleInformation().imports) {
-        Identifier moduleName = Identifier::fromString(vm, makeAtomString(import.module));
-        Identifier fieldName = Identifier::fromString(vm, makeAtomString(import.field));
-        // FIXME: actually validate
+        if (!validateImportForBuiltinSetNames(import, simpleBuiltinSetNames))
+            return false;
     }
 
-    module.setBuiltinSetsAndImportedStringConstants(WTFMove(builtinSets), WTFMove(importedStringConstants));
+    Vector<String> qualifiedBuiltinSetNames = qualifyAndIsolate(simpleBuiltinSetNames);
+    module.setCompileOptions(WTFMove(importedStringConstants), WTFMove(qualifiedBuiltinSetNames));
     return true;
 }
 

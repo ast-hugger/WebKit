@@ -39,23 +39,26 @@ ModuleInformation::ModuleInformation()
 
 ModuleInformation::~ModuleInformation() = default;
 
-Vector<const String*> ModuleInformation::builtinSets() const 
+void ModuleInformation::setCompileOptions(std::optional<String>&& constants, Vector<String>&& qualifiedBuiltinSetNames)
 {
-    Vector<const String*> result;
-    for (const auto& name : m_builtinSets) {
-        result.append(&name);
+    m_importedStringConstants = WTFMove(constants);
+    m_builtinSets = WTFMove(qualifiedBuiltinSetNames);
+    // all strings must be isolated copies to be owned by this instance
+    if (m_importedStringConstants) {
+        ASSERT(m_importedStringConstants.value().impl()->refCount() == 1);
     }
-    return result;
+    for (auto& string : m_builtinSets) {
+        ASSERT(string.impl()->refCount() == 1);
+    }
 }
 
-bool ModuleInformation::builtinSetsInclude(const Identifier& builtinSetName) const {
+bool ModuleInformation::builtinSetsInclude(const String& qualifiedName) const {
     for (const auto& name : m_builtinSets) {
-        if (name.impl() == builtinSetName.impl())
+        if (name == qualifiedName)
             return true;
     }
     return false;
 }
-
 
 } } // namespace JSC::Wasm
 

@@ -73,7 +73,7 @@ public:
     Wasm::TypeIndex typeIndexFromFunctionIndexSpace(FunctionSpaceIndex functionIndexSpace) const;
     const Wasm::ModuleInformation& moduleInformation() const { return m_moduleInformation.get(); }
 
-    void setBuiltinSetsAndImportedStringConstants(Vector<String>&& builtins, std::optional<String>&& importedStringConstants);
+    void setCompileOptions(std::optional<String>&& importedStringConstants, Vector<String>&& qualifiedBuiltinSetNames);
 
     Ref<CalleeGroup> compileSync(VM&, MemoryMode);
     void compileAsync(VM&, MemoryMode, CalleeGroup::AsyncCompilationCallback&&);
