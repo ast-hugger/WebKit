@@ -125,31 +125,21 @@ static bool isBuiltinSetName(Identifier& moduleName)
     return moduleName == "wasm:test"; // FIXME
 }
 
-static JSGlobalObject* savedGlobalObjectHack;
-
-static EncodedJSValue foo(void* arg1, void* arg2, void* arg3, void* arg4, void* arg5, void* arg6, void* arg7, void* arg8)
+static EncodedJSValue foo()
 {
-    printf("arg1=%p\n", arg1);
-    printf("arg2=%p\n", arg2);
-    printf("arg3=%p\n", arg3);
-    printf("arg4=%p\n", arg4);
-    printf("arg5=%p\n", arg5);
-    printf("arg6=%p\n", arg6);
-    printf("arg7=%p\n", arg7);
-    printf("arg8=%p\n\n", arg8);
+    CallFrame* frame = std::bit_cast<CallFrame*>(__builtin_frame_address(0));
+    JSWebAssemblyInstance* wasmInstance = std::bit_cast<JSWebAssemblyInstance*>(frame->codeBlock());
+    VM* vm = &wasmInstance->vm();
 
-    VM& vm = savedGlobalObjectHack->vm();
-    return JSValue::encode(jsString(vm, String::fromLatin1("Hello from a fake intrinsic!")));
+    return JSValue::encode(jsString(*vm, String::fromLatin1("Hello from a fake intrinsic!")));
 }
 
-static void initializeIntrinsicImport(JSGlobalObject* globalObject, WebAssemblyModuleRecord* record, const Wasm::Import& import, const Identifier& moduleName, const Identifier& fieldName)
+static void initializeBuiltinImport(JSGlobalObject* globalObject, WebAssemblyModuleRecord* record, const Wasm::Import& import, const Identifier& moduleName, const Identifier& fieldName)
 {
     UNUSED_PARAM(moduleName);
     UNUSED_PARAM(fieldName);
 
-    printf("wasm module=%p\n", record);
-    printf("globalObject=%p\n", globalObject);
-    savedGlobalObjectHack = globalObject;
+    VM& vm = globalObject->vm();
 
     // auto* callee = new Wasm::IntrinsicCallee((void (*)())foo, Wasm::FunctionSpaceIndex(import.kindIndex), { nullptr, nullptr }); // FIXME just leaking it for now
     auto* info = record->m_instance->importFunctionInfo(import.kindIndex);
@@ -157,6 +147,8 @@ static void initializeIntrinsicImport(JSGlobalObject* globalObject, WebAssemblyM
     // info->importFunctionStub = tagCodePtr<WasmEntryPtrTag>(ptr);
     info->importFunctionStub = foo;
     // info->boxedCallee = CalleeBits::encodeNativeCallee(callee);
+    JSWebAssemblyInstance* instance = record->m_instance.get();
+    info->targetInstance.set(vm, record->m_instance.get(), instance); // FIXME is this the right owner?
     info->boxedWasmCalleeLoadLocation = &Wasm::NullWasmCallee; // &info->boxedCallee;
     info->entrypointLoadLocation = &info->importFunctionStub;
     info->typeIndex = record->m_instance->moduleInformation().importFunctionTypeIndices[import.kindIndex];
@@ -187,7 +179,7 @@ void WebAssemblyModuleRecord::initializeImports(JSGlobalObject* globalObject, JS
 
         if (isBuiltinSetName(moduleName)) {
             // Intrinsic "imports" don't resolve to JSObjects from the importObject
-            initializeIntrinsicImport(globalObject, this, import, moduleName, fieldName);
+            initializeBuiltinImport(globalObject, this, import, moduleName, fieldName);
             continue;
         }
 

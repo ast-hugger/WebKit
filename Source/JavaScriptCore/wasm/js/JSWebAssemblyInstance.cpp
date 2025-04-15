@@ -227,25 +227,26 @@ void JSWebAssemblyInstance::finalizeCreation(VM& vm, JSGlobalObject* globalObjec
     for (unsigned importFunctionNum = 0; importFunctionNum < numImportFunctions(); ++importFunctionNum) {
         auto functionSpaceIndex = FunctionSpaceIndex(importFunctionNum);
         auto* info = importFunctionInfo(importFunctionNum);
+        // Imports fall into 3 categories:
+        // 1. If targetInstance is null, the import is a JS object supplied via importsObject
+        // 2. If targetInstance is non-null but importFunctionStub is null, the instance is a wasm function
+        // 3. If both targetInstance and importFunctionStull are non-null, the import is a builtin
         if (!info->targetInstance) {
-            // HACK: for intrinsics, the stub and other info is set by initializeImports()
-            if (!info->importFunctionStub) {
-                info->importFunctionStub = module().importFunctionStub(functionSpaceIndex);
-                importCallees.append(adoptRef(*new WasmToJSCallee(functionSpaceIndex, { nullptr, nullptr })));
-                ASSERT(*info->boxedWasmCalleeLoadLocation == CalleeBits::encodeNullCallee());
-                info->boxedCallee = CalleeBits::encodeNativeCallee(importCallees.last().ptr());
-                info->boxedWasmCalleeLoadLocation = &info->boxedCallee;
+            info->importFunctionStub = module().importFunctionStub(functionSpaceIndex);
+            importCallees.append(adoptRef(*new WasmToJSCallee(functionSpaceIndex, { nullptr, nullptr })));
+            ASSERT(*info->boxedWasmCalleeLoadLocation == CalleeBits::encodeNullCallee());
+            info->boxedCallee = CalleeBits::encodeNativeCallee(importCallees.last().ptr());
+            info->boxedWasmCalleeLoadLocation = &info->boxedCallee;
 
-                auto callLinkInfo = makeUnique<DataOnlyCallLinkInfo>();
-                callLinkInfo->initialize(vm, nullptr, CallLinkInfo::CallType::Call, CodeOrigin { });
-                WTF::storeStoreFence(); // CallLinkInfo is visited by concurrent GC already, thus, when we add it, we must ensure that it is fully initialized.
-                info->callLinkInfo = WTFMove(callLinkInfo);
-            }
+            auto callLinkInfo = makeUnique<DataOnlyCallLinkInfo>();
+            callLinkInfo->initialize(vm, nullptr, CallLinkInfo::CallType::Call, CodeOrigin { });
+            WTF::storeStoreFence(); // CallLinkInfo is visited by concurrent GC already, thus, when we add it, we must ensure that it is fully initialized.
+            info->callLinkInfo = WTFMove(callLinkInfo);
             vm.writeBarrier(this); // Materialized CallLinkInfo and we need rescan of JSWebAssemblyInstance.
-        } else {
+        } else if (!info->importFunctionStub) {
             info->importFunctionStub = wasmCalleeGroup->wasmToWasmExitStub(functionSpaceIndex);
             ASSERT(info->boxedWasmCalleeLoadLocation && *info->boxedWasmCalleeLoadLocation);
-        }
+        } // otherwise: it's builtin, importFunctionStub is already set up - nothing to do
     }
 
     if (creationMode == CreationMode::FromJS) {
