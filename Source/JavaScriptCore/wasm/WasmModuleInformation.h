@@ -176,6 +176,7 @@ struct ModuleInformation final : public ThreadSafeRefCounted<ModuleInformation> 
         return m_importedStringConstants ? &*m_importedStringConstants : nullptr;
     }
     Vector<const String*> builtinSets() const;
+    bool builtinSetsInclude(const Identifier& builtinSetName) const;
 
     void setImportedStringConstants(std::optional<String>&& constants)
     {

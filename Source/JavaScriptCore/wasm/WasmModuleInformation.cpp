@@ -48,6 +48,14 @@ Vector<const String*> ModuleInformation::builtinSets() const
     return result;
 }
 
+bool ModuleInformation::builtinSetsInclude(const Identifier& builtinSetName) const {
+    for (const auto& name : m_builtinSets) {
+        if (name.impl() == builtinSetName.impl())
+            return true;
+    }
+    return false;
+}
+
 
 } } // namespace JSC::Wasm
 

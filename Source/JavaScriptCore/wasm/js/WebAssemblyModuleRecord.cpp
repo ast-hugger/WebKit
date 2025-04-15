@@ -23,8 +23,6 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <stdio.h>
-
 #include "config.h"
 #include "WebAssemblyModuleRecord.h"
 
@@ -44,6 +42,7 @@
 #include "WasmConstExprGenerator.h"
 #include "WasmOperationsInlines.h"
 #include "WasmTypeDefinitionInlines.h"
+#include "WebAssemblyBuiltin.h"
 #include "WebAssemblyFunction.h"
 #include <wtf/text/MakeString.h>
 
@@ -120,38 +119,21 @@ Synchronousness WebAssemblyModuleRecord::link(JSGlobalObject* globalObject, JSVa
     return Synchronousness::Sync;
 }
 
-static bool isBuiltinSetName(Identifier& moduleName)
+static WebAssemblyBuiltinSet* findEnabledBuiltinSet(const String& qualifiedBuiltinSetName, const Wasm::ModuleInformation& moduleInformation)
 {
-    return moduleName == "wasm:test"; // FIXME
+    UNUSED_PARAM(moduleInformation);
+    // FIXME: check first if the set is enabled for the module
+    return WebAssemblyBuiltinSet::findByQualifiedName(qualifiedBuiltinSetName);
 }
 
-static EncodedJSValue foo()
+static void initializeBuiltinImport(VM& vm, WriteBarrier<JSWebAssemblyInstance>& instance, unsigned importIndex, WebAssemblyBuiltin* builtin)
 {
-    CallFrame* frame = std::bit_cast<CallFrame*>(__builtin_frame_address(0));
-    JSWebAssemblyInstance* wasmInstance = std::bit_cast<JSWebAssemblyInstance*>(frame->codeBlock());
-    VM* vm = &wasmInstance->vm();
-
-    return JSValue::encode(jsString(*vm, String::fromLatin1("Hello from a fake intrinsic!")));
-}
-
-static void initializeBuiltinImport(JSGlobalObject* globalObject, WebAssemblyModuleRecord* record, const Wasm::Import& import, const Identifier& moduleName, const Identifier& fieldName)
-{
-    UNUSED_PARAM(moduleName);
-    UNUSED_PARAM(fieldName);
-
-    VM& vm = globalObject->vm();
-
-    // auto* callee = new Wasm::IntrinsicCallee((void (*)())foo, Wasm::FunctionSpaceIndex(import.kindIndex), { nullptr, nullptr }); // FIXME just leaking it for now
-    auto* info = record->m_instance->importFunctionInfo(import.kindIndex);
-    // auto* ptr = untagCodePtr<CFunctionPtrTag>(foo);
-    // info->importFunctionStub = tagCodePtr<WasmEntryPtrTag>(ptr);
-    info->importFunctionStub = foo;
-    // info->boxedCallee = CalleeBits::encodeNativeCallee(callee);
-    JSWebAssemblyInstance* instance = record->m_instance.get();
-    info->targetInstance.set(vm, record->m_instance.get(), instance); // FIXME is this the right owner?
-    info->boxedWasmCalleeLoadLocation = &Wasm::NullWasmCallee; // &info->boxedCallee;
+    auto* info = instance->importFunctionInfo(importIndex);
+    info->importFunctionStub = builtin->implementation();
     info->entrypointLoadLocation = &info->importFunctionStub;
-    info->typeIndex = record->m_instance->moduleInformation().importFunctionTypeIndices[import.kindIndex];
+    info->boxedWasmCalleeLoadLocation = &Wasm::NullWasmCallee;
+    info->targetInstance.set(vm, instance.get(), instance.get()); // FIXME what is the right owner?
+    info->typeIndex = instance->moduleInformation().importFunctionTypeIndices[importIndex];
 }
 
 // https://webassembly.github.io/spec/js-api/#read-the-imports
@@ -177,9 +159,13 @@ void WebAssemblyModuleRecord::initializeImports(JSGlobalObject* globalObject, JS
         Identifier moduleName = Identifier::fromString(vm, makeAtomString(import.module));
         Identifier fieldName = Identifier::fromString(vm, makeAtomString(import.field));
 
-        if (isBuiltinSetName(moduleName)) {
-            // Intrinsic "imports" don't resolve to JSObjects from the importObject
-            initializeBuiltinImport(globalObject, this, import, moduleName, fieldName);
+        WebAssemblyBuiltinSet* builtinSet = findEnabledBuiltinSet(moduleName.string().string(), moduleInformation);
+        if (builtinSet) {
+            WebAssemblyBuiltin* builtin = builtinSet->findBuiltin(fieldName.string().string());
+            if (!builtin) {
+                return exception(createTypeError(globalObject, importFailMessage(import, "import"_s, "is not a valid builtin reference"_s)));
+            }
+            initializeBuiltinImport(vm, m_instance, import.kindIndex, builtin);
             continue;
         }
 
