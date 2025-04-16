@@ -128,7 +128,7 @@ static WebAssemblyBuiltinSet* findEnabledBuiltinSet(const String& qualifiedName,
     return WebAssemblyBuiltinSet::findByQualifiedName(qualifiedName);
 }
 
-static void initializeBuiltinImport(VM& vm, WriteBarrier<JSWebAssemblyInstance>& instance, unsigned importIndex, WebAssemblyBuiltin* builtin)
+static void initializeBuiltinImport(VM& vm, WriteBarrier<JSWebAssemblyInstance>& instance, unsigned importIndex, const WebAssemblyBuiltin* builtin)
 {
     auto* info = instance->importFunctionInfo(importIndex);
     info->importFunctionStub = builtin->implementation();
@@ -167,7 +167,7 @@ void WebAssemblyModuleRecord::initializeImports(JSGlobalObject* globalObject, JS
             auto sig = moduleInformation.typeSignatures[import.kindIndex]->as<Wasm::FunctionSignature>();
             UNUSED_VARIABLE(sig);
 
-            WebAssemblyBuiltin* builtin = builtinSet->findBuiltin(fieldName.string().string());
+            const WebAssemblyBuiltin* builtin = builtinSet->findBuiltin(fieldName.string().string());
             if (!builtin) {
                 return exception(createTypeError(globalObject, importFailMessage(import, "import"_s, "is not a valid builtin reference"_s)));
             }

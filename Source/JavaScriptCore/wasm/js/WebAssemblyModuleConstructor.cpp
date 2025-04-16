@@ -310,6 +310,10 @@ static std::optional<String> extractImportedStringConstants(JSGlobalObject* glob
     }
 }
 
+/**
+ * Return a vector containing any strings appearing as the value of the "builtins"
+ * property of the specified optionsObject.
+ */
 static Vector<String> extractBuiltins(JSGlobalObject* globalObject, JSObject* optionsObject)
 {
     VM& vm = globalObject->vm();
@@ -334,6 +338,12 @@ static bool namesInclude(const String& expected, Vector<String>& names)
     return false;
 }
 
+/**
+ * Given a vector of simple builtin names, create and return a vector
+ * with the same names prepended with the "wasm:" prefix. The Strings
+ * of the output set should be isolated, i.e. have a refcount of 1,
+ * so we don't have to worry about sharing.
+ */
 static Vector<String> qualifyAndIsolate(Vector<String>& simpleNames)
 {
     Vector<String> result;
@@ -349,12 +359,13 @@ static Vector<String> qualifyAndIsolate(Vector<String>& simpleNames)
  * See https://webassembly.github.io/js-string-builtins/js-api/#validate-an-import-for-builtins
  *
  * In plain English:
- * - if the import module name is not listed in builtinSetNames: valid
- * - if import module name is listed, but there is no such builtin set: valid
- * - if the set does not contain a builtin whose name matches the import name: valid
- * - builtin type must match the import type
+ * The validation is very permissive. It fails only is if:
+ *  - there is a builtin set whose simple name appears in builtinSetNames, and
+ *  - the qualified name of the builtin set matches the import module name, and
+ *  - the builtin set contains a builtin matching the function name, and
+ *  - the builtin type does not match the import type.
  */
-static bool validateImportForBuiltinSetNames(const Wasm::Import& import, Vector<String>& builtinSetNames)
+static bool validateImportForBuiltinSetNames(const Wasm::Import& import, const Wasm::ModuleInformation& moduleInformation, Vector<String>& builtinSetNames)
 {
     String moduleName = makeString(import.module);
     if (!namesInclude(moduleName, builtinSetNames))
@@ -364,19 +375,21 @@ static bool validateImportForBuiltinSetNames(const Wasm::Import& import, Vector<
         return true;
     String importName = makeString(import.field);
     // Even if the named builtin set exists, it should only be checked if listed
-    WebAssemblyBuiltin* builtin = builtinSet->findBuiltin(importName);
+    const WebAssemblyBuiltin* builtin = builtinSet->findBuiltin(importName);
     if (!builtin)
         return true;
-    // FIXME: should compare the types here; builtins are not tracking types yet
-    return true;
+    const Wasm::FunctionSignature* builtinSig = builtin->signature();
+    Wasm::TypeIndex typeIndex = moduleInformation.importFunctionTypeIndices[import.kindIndex];
+    const Wasm::FunctionSignature* importSig = moduleInformation.typeSignatures[typeIndex]->as<Wasm::FunctionSignature>();
+    return *builtinSig == *importSig;
 }
 
 /**
  * See https://webassembly.github.io/js-string-builtins/js-api/#validate-builtins-and-imported-string-for-a-webassembly-module
  *
  * In plain English:
- * 1) Make sure there aren't any duplicates in builtinSetNames.
- * 2) For all imports of the module:
+ * 1. There shouldn't be any duplicates in builtinSetNames.
+ * 2. For all imports of the module:
  *  - if the import module name matches importedStringModule, the import type must match `global const (ref extern)`.
  *  - if the import module name matches the qualified name of an existing builtin named in builtInSet,
  *    and the import name matches the name of a builtin in that set, the import type must match `func |builtinFuncType|`
@@ -390,12 +403,12 @@ static bool validateBuiltinsAndImportedStrings(JSGlobalObject* globalObject, Was
     if (!optionsObject) return true;
 
     std::optional<String> importedStringConstants = extractImportedStringConstants(globalObject, optionsObject);
-    // The extracted builtin set names will have the "wasm:" qualifying prefix
     Vector<String> simpleBuiltinSetNames = extractBuiltins(globalObject, optionsObject);
     Wasm::Module& module = result.value().get();
 
     for (const auto& import : module.moduleInformation().imports) {
-        if (!validateImportForBuiltinSetNames(import, simpleBuiltinSetNames))
+        // FIXME: validate against importedStringConstants
+        if (!validateImportForBuiltinSetNames(import, module.moduleInformation(), simpleBuiltinSetNames))
             return false;
     }
 

@@ -9,11 +9,11 @@
 
 namespace JSC {
 
-WebAssemblyBuiltin* WebAssemblyBuiltinSet::findBuiltin(const String& name) const
+const WebAssemblyBuiltin* WebAssemblyBuiltinSet::findBuiltin(const String& name) const
 {
-    for (auto* builtin : m_builtins) {
-        if (name == builtin->name())
-            return builtin;
+    for (auto& builtin : m_builtins) {
+        if (name == builtin.name())
+            return &builtin;
     }
     return nullptr;
 }
@@ -31,32 +31,56 @@ static EncodedJSValue jsStringHello()
     return JSValue::encode(jsString(*vm, String::fromLatin1("Hello from a builtin!")));
 }
 
-static WebAssemblyBuiltin builtinJsStringHello = { ASCIILiteral("hello"), jsStringHello };
+// static WebAssemblyBuiltin builtinJsStringHello = { ASCIILiteral("hello"), jsStringHello };
 
-static std::array<WebAssemblyBuiltin*, 1> allJsStringBuiltins = { &builtinJsStringHello };
+// static std::array<WebAssemblyBuiltin*, 1> allJsStringBuiltins = { &builtinJsStringHello };
 
-static WebAssemblyBuiltinSet jsStringBuiltinSet = { ASCIILiteral("js-string"), ASCIILiteral("wasm:js-string"), std::span(allJsStringBuiltins) };
+// static WebAssemblyBuiltinSet jsStringBuiltinSet = { ASCIILiteral("js-string"), ASCIILiteral("wasm:js-string"), std::span(allJsStringBuiltins) };
 
 /*
         All builtin sets
 */
 
-static std::array<WebAssemblyBuiltinSet*, 1> allBuiltinSets = { &jsStringBuiltinSet };
+WebAssemblyBuiltinSet WebAssemblyBuiltinSet::createJSStringBuiltinSet()
+{
+    return WebAssemblyBuiltinSet(
+        ASCIILiteral("js-string"),
+        ASCIILiteral("wasm:js-string"),
+        {
+            {
+                ASCIILiteral("hello"),
+                Wasm::TypeInformation::typeDefinitionForFunction({ Wasm::externrefType() }, { }),
+                jsStringHello
+            }
+        });
+}
+
+static Vector<WebAssemblyBuiltinSet>& allBuiltinSets() {
+    static bool populated = false;
+    static Vector<WebAssemblyBuiltinSet>* sets;
+    if (!populated) {
+        sets = new Vector<WebAssemblyBuiltinSet>(); // leaked, but not really
+        sets->append(WebAssemblyBuiltinSet::createJSStringBuiltinSet());
+    }
+    return *sets;
+}
+
+// static std::array<WebAssemblyBuiltinSet*, 1> allBuiltinSets = { &jsStringBuiltinSet };
 
 WebAssemblyBuiltinSet* WebAssemblyBuiltinSet::findBySimpleName(const String& name)
 {
-    for (auto* builtinSet : allBuiltinSets ) {
-        if (name == builtinSet->simpleName())
-            return builtinSet;
+    for (auto& builtinSet : allBuiltinSets() ) {
+        if (name == builtinSet.simpleName())
+            return &builtinSet;
     }
     return nullptr;
 }
 
 WebAssemblyBuiltinSet* WebAssemblyBuiltinSet::findByQualifiedName(const String& name)
 {
-    for (auto* builtinSet : allBuiltinSets ) {
-        if (name == builtinSet->qualifiedName())
-            return builtinSet;
+    for (auto& builtinSet : allBuiltinSets() ) {
+        if (name == builtinSet.qualifiedName())
+            return &builtinSet;
     }
     return nullptr;
 }
