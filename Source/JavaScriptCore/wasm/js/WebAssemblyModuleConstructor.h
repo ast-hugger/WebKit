@@ -49,7 +49,6 @@ public:
 
     static JSWebAssemblyModule* createModule(JSGlobalObject*, CallFrame*, Vector<uint8_t>&& buffer, JSObject* compileOptions);
 private:
-
     WebAssemblyModuleConstructor(VM&, Structure*);
     void finishCreation(VM&, WebAssemblyModulePrototype*);
 };

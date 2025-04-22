@@ -298,13 +298,16 @@ JSC_DEFINE_HOST_FUNCTION(callJSWebAssemblyModule, (JSGlobalObject* globalObject,
     return JSValue::encode(throwConstructorCannotBeCalledAsFunctionTypeError(globalObject, scope, "WebAssembly.Module"_s));
 }
 
+/**
+ * If the optionsObject has an attribute named "importedStringConstants", and the attribute value is
+ * a (JavaScript) string, return a String which is an isolated copy of that value.
+ */
 static std::optional<String> extractImportedStringConstants(JSGlobalObject* globalObject, JSObject* optionsObject)
 {
     VM& vm = globalObject->vm();
     JSValue importedStringConstantsValue = optionsObject->get(globalObject, PropertyName(Identifier::fromString(vm, "importedStringConstants"_s)));
     if (importedStringConstantsValue.isString()) {
-        auto contents = asString(importedStringConstantsValue)->value(globalObject);
-        return contents.data.isolatedCopy();
+        return asString(importedStringConstantsValue)->value(globalObject)->isolatedCopy();
     } else {
         return std::nullopt;
     }
@@ -314,7 +317,7 @@ static std::optional<String> extractImportedStringConstants(JSGlobalObject* glob
  * Return a vector containing any strings appearing as the value of the "builtins"
  * property of the specified optionsObject.
  */
-static Vector<String> extractBuiltins(JSGlobalObject* globalObject, JSObject* optionsObject)
+static Vector<String> extractBuiltins(JSGlobalObject* globalObject, JSObject* optionsObject LIFETIME_BOUND)
 {
     VM& vm = globalObject->vm();
     Vector<String> result;
@@ -330,10 +333,21 @@ static Vector<String> extractBuiltins(JSGlobalObject* globalObject, JSObject* op
 
 static bool namesInclude(const String& expected, Vector<String>& names)
 {
-    // Just a plain linear search is okay, the list of builtin sets is short.
+    // Assuming the list of builtin sets is short so a plain linear search is ok.
     for (auto& name : names) {
-        if (name == expected)
-            return true;
+        if (name == expected) return true;
+    }
+    return false;
+}
+
+static bool containsDuplicates(const Vector<String>& names)
+{
+    // Assuming O(N^2) is never a problem for lists of builtin set names.
+    size_t limit = names.size();
+    for (size_t i = 0; i < limit; i++) {
+        for (size_t j = i + 1; j < limit; j++) {
+            if (names[i] == names[j]) return true;
+        }
     }
     return false;
 }
@@ -356,21 +370,32 @@ static Vector<String> qualifyAndIsolate(Vector<String>& simpleNames)
 }
 
 /**
+ * See step 2.1 of: https://webassembly.github.io/js-string-builtins/js-api/#validate-builtins-and-imported-string-for-a-webassembly-module
+ */
+static bool validateImportedStringConstant(const Wasm::Import& import, const Wasm::ModuleInformation& moduleInformation)
+{
+    // auto importType = moduleInformation.typeSignatures[import.kindIndex]; // FIXME: is this the right way of getting the type?
+    // auto expectedType = Wasm::TypeInformation::
+    UNUSED_PARAM(import);
+    UNUSED_PARAM(moduleInformation);
+    return true;
+}
+
+/**
  * See https://webassembly.github.io/js-string-builtins/js-api/#validate-an-import-for-builtins
  *
- * In plain English:
- * The validation is very permissive. It fails only is if:
+ * Summary:
+ * Fail the validation if:
  *  - there is a builtin set whose simple name appears in builtinSetNames, and
  *  - the qualified name of the builtin set matches the import module name, and
  *  - the builtin set contains a builtin matching the function name, and
  *  - the builtin type does not match the import type.
  */
-static bool validateImportForBuiltinSetNames(const Wasm::Import& import, const Wasm::ModuleInformation& moduleInformation, Vector<String>& builtinSetNames)
+static bool validateImportForBuiltinSetNames(const Wasm::Import& import, const String& importModuleName, const Wasm::ModuleInformation& moduleInformation, Vector<String>& builtinSetNames)
 {
-    String moduleName = makeString(import.module);
-    if (!namesInclude(moduleName, builtinSetNames))
+    if (!namesInclude(importModuleName, builtinSetNames))
         return true;
-    WebAssemblyBuiltinSet *builtinSet = WebAssemblyBuiltinSet::findBySimpleName(moduleName);
+    WebAssemblyBuiltinSet *builtinSet = WebAssemblyBuiltinSet::findBySimpleName(importModuleName);
     if (!builtinSet)
         return true;
     String importName = makeString(import.field);
@@ -387,7 +412,7 @@ static bool validateImportForBuiltinSetNames(const Wasm::Import& import, const W
 /**
  * See https://webassembly.github.io/js-string-builtins/js-api/#validate-builtins-and-imported-string-for-a-webassembly-module
  *
- * In plain English:
+ * Summary:
  * 1. There shouldn't be any duplicates in builtinSetNames.
  * 2. For all imports of the module:
  *  - if the import module name matches importedStringModule, the import type must match `global const (ref extern)`.
@@ -404,20 +429,30 @@ static bool validateBuiltinsAndImportedStrings(JSGlobalObject* globalObject, Was
 
     std::optional<String> importedStringConstants = extractImportedStringConstants(globalObject, optionsObject);
     Vector<String> simpleBuiltinSetNames = extractBuiltins(globalObject, optionsObject);
-    Wasm::Module& module = result.value().get();
+    const Wasm::ModuleInformation& moduleInformation = result.value()->moduleInformation();
 
-    for (const auto& import : module.moduleInformation().imports) {
-        // FIXME: validate against importedStringConstants
-        if (!validateImportForBuiltinSetNames(import, module.moduleInformation(), simpleBuiltinSetNames))
+    if (containsDuplicates(simpleBuiltinSetNames)) {
+        return false;
+    }
+
+    for (const auto& import : moduleInformation.imports) {
+        String importModuleName = makeString(import.module);
+        if (importedStringConstants && importedStringConstants == importModuleName) {
+            if (!validateImportedStringConstant(import, moduleInformation))
+                return false;
+        } else if (!validateImportForBuiltinSetNames(import, importModuleName, moduleInformation, simpleBuiltinSetNames)) {
             return false;
+        }
     }
 
     Vector<String> qualifiedBuiltinSetNames = qualifyAndIsolate(simpleBuiltinSetNames);
-    module.setCompileOptions(WTFMove(importedStringConstants), WTFMove(qualifiedBuiltinSetNames));
+    result.value()->setCompileOptions(WTFMove(importedStringConstants), WTFMove(qualifiedBuiltinSetNames));
     return true;
 }
 
-
+/**
+ * See https://webassembly.github.io/js-string-builtins/js-api/#dom-module-module
+ */
 JSWebAssemblyModule* WebAssemblyModuleConstructor::createModule(JSGlobalObject* globalObject, CallFrame* callFrame, Vector<uint8_t>&& buffer, JSObject* optionsObject)
 {
     VM& vm = globalObject->vm();

@@ -53,12 +53,6 @@ Module::Module(IPIntPlan& plan)
 {
 }
 
-
-void Module::setCompileOptions(std::optional<String>&& importedStringConstants, Vector<String>&& builtinSets)
-{
-    m_moduleInformation.get().setCompileOptions(WTFMove(importedStringConstants), WTFMove(builtinSets));
-}
-
 Module::~Module() = default;
 
 Wasm::TypeIndex Module::typeIndexFromFunctionIndexSpace(FunctionSpaceIndex functionIndexSpace) const
@@ -135,6 +129,11 @@ Ref<CalleeGroup> Module::getOrCreateCalleeGroup(VM& vm, MemoryMode mode)
             m_calleeGroups[static_cast<uint8_t>(mode)] = calleeGroup = CalleeGroup::createFromLLInt(vm, mode, const_cast<ModuleInformation&>(moduleInformation()), m_llintCallees.copyRef());
     }
     return calleeGroup.releaseNonNull();
+}
+
+void Module::setCompileOptions(std::optional<String>&& importedStringConstants, Vector<String>&& builtinSets)
+{
+    m_moduleInformation.get().setCompileOptions(WTFMove(importedStringConstants), WTFMove(builtinSets));
 }
 
 Ref<CalleeGroup> Module::compileSync(VM& vm, MemoryMode mode)

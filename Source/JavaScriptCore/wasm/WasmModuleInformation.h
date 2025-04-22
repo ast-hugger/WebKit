@@ -172,13 +172,14 @@ struct ModuleInformation final : public ThreadSafeRefCounted<ModuleInformation> 
     }
     size_t totalFunctionSize() const { return m_totalFunctionSize; }
 
-    const String* importedStringConstants() const {
+    void setCompileOptions(std::optional<String>&& constants, Vector<String>&& qualifiedBuiltinSetNames);
+
+    const String* importedStringConstants() const
+    {
         return m_importedStringConstants ? &*m_importedStringConstants : nullptr;
     }
     /// Indicate whether a builtin set by the given qualified name is enabled for this module.
     bool builtinSetsInclude(const String& qualifiedName) const;
-
-    void setCompileOptions(std::optional<String>&& constants, Vector<String>&& qualifiedBuiltinSetNames);
 
     // FIXME: These should probably be FixedVectors.
     Vector<Import> imports;

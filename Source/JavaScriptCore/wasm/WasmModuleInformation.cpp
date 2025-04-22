@@ -52,7 +52,8 @@ void ModuleInformation::setCompileOptions(std::optional<String>&& constants, Vec
     }
 }
 
-bool ModuleInformation::builtinSetsInclude(const String& qualifiedName) const {
+bool ModuleInformation::builtinSetsInclude(const String& qualifiedName) const
+{
     for (const auto& name : m_builtinSets) {
         if (name == qualifiedName)
             return true;

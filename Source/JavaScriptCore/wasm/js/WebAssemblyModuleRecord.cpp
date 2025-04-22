@@ -161,12 +161,10 @@ void WebAssemblyModuleRecord::initializeImports(JSGlobalObject* globalObject, JS
         Identifier moduleName = Identifier::fromString(vm, makeAtomString(import.module));
         Identifier fieldName = Identifier::fromString(vm, makeAtomString(import.field));
 
+        // If the import's module name refers to a builtin set enabled in compileOptions of this module,
+        // hijack the rest of the import resolution process to directly bind the import to the builtin.
         WebAssemblyBuiltinSet* builtinSet = findEnabledBuiltinSet(moduleName.string().string(), moduleInformation);
         if (builtinSet) {
-            printf("type index = %u\n", import.kindIndex);
-            auto sig = moduleInformation.typeSignatures[import.kindIndex]->as<Wasm::FunctionSignature>();
-            UNUSED_VARIABLE(sig);
-
             const WebAssemblyBuiltin* builtin = builtinSet->findBuiltin(fieldName.string().string());
             if (!builtin) {
                 return exception(createTypeError(globalObject, importFailMessage(import, "import"_s, "is not a valid builtin reference"_s)));

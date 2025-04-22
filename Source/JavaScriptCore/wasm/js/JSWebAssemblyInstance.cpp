@@ -232,6 +232,7 @@ void JSWebAssemblyInstance::finalizeCreation(VM& vm, JSGlobalObject* globalObjec
         // 2. If targetInstance is non-null but importFunctionStub is null, the import is a regular wasm function
         // 3. If both targetInstance and importFunctionStull are non-null, the import is a builtin
         if (!info->targetInstance) {
+            // the import is a JS function
             info->importFunctionStub = module().importFunctionStub(functionSpaceIndex);
             importCallees.append(adoptRef(*new WasmToJSCallee(functionSpaceIndex, { nullptr, nullptr })));
             ASSERT(*info->boxedWasmCalleeLoadLocation == CalleeBits::encodeNullCallee());
@@ -244,9 +245,10 @@ void JSWebAssemblyInstance::finalizeCreation(VM& vm, JSGlobalObject* globalObjec
             info->callLinkInfo = WTFMove(callLinkInfo);
             vm.writeBarrier(this); // Materialized CallLinkInfo and we need rescan of JSWebAssemblyInstance.
         } else if (!info->importFunctionStub) {
+            // the import is a Wasm function
             info->importFunctionStub = wasmCalleeGroup->wasmToWasmExitStub(functionSpaceIndex);
             ASSERT(info->boxedWasmCalleeLoadLocation && *info->boxedWasmCalleeLoadLocation);
-        } // otherwise: it's builtin, importFunctionStub is already set up - nothing to do
+        } // otherwise: the import is a builtin, importFunctionStub is already set up
     }
 
     if (creationMode == CreationMode::FromJS) {
