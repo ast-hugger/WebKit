@@ -42,7 +42,7 @@ std::optional<WebAssemblyCompileOptions> WebAssemblyCompileOptions::create(JSGlo
     JSValue importedStringConstantsValue = optionsObject->get(globalObject, PropertyName(Identifier::fromString(vm, "importedStringConstants"_s)));
     if (importedStringConstantsValue.isString()) {
         auto contents = asString(importedStringConstantsValue)->value(globalObject);
-        options.m_importedStringConstants = contents.data.isolatedCopy();
+        options.m_importedStringConstants = String(contents).isolatedCopy();
     }
 
     // Check for and acquire 'builtins'.
@@ -50,7 +50,8 @@ std::optional<WebAssemblyCompileOptions> WebAssemblyCompileOptions::create(JSGlo
     forEachInIterable(globalObject, builtinsValue, [&] (VM&, JSGlobalObject* globalObject, JSValue nextValue) {
         if (nextValue.isString()) {
             auto contents = asString(nextValue)->value(globalObject);
-            options.m_simpleBuiltinSetNames.append(contents.data.isolatedCopy());
+            String qualifiedName = makeString("wasm:"_s, StringView(contents));
+            options.m_qualifiedBuiltinSetNames.append(qualifiedName);
         }
     });
     return options;
@@ -58,7 +59,7 @@ std::optional<WebAssemblyCompileOptions> WebAssemblyCompileOptions::create(JSGlo
 
 WebAssemblyCompileOptions::WebAssemblyCompileOptions()
     : m_importedStringConstants(std::nullopt)
-    , m_simpleBuiltinSetNames(Vector<String>())
+    , m_qualifiedBuiltinSetNames(Vector<String>())
 {
 }
 
@@ -94,10 +95,10 @@ static bool validateImportedStringConstant(const Wasm::Import& import, const Was
  */
 bool WebAssemblyCompileOptions::validateImportForBuiltinSetNames(const Wasm::Import& import, const String& importModuleName, const Wasm::ModuleInformation& moduleInfo) const
 {
-    if (!namesInclude(importModuleName, m_simpleBuiltinSetNames)) {
+    if (!namesInclude(importModuleName, m_qualifiedBuiltinSetNames)) {
         return true;
     }
-    WebAssemblyBuiltinSet *builtinSet = WebAssemblyBuiltinSet::findBySimpleName(importModuleName);
+    WebAssemblyBuiltinSet *builtinSet = WebAssemblyBuiltinSet::findByQualifiedName(importModuleName);
     if (!builtinSet) {
         return true;
     }
@@ -108,7 +109,7 @@ bool WebAssemblyCompileOptions::validateImportForBuiltinSetNames(const Wasm::Imp
     }
     const Wasm::FunctionSignature* builtinSig = builtin->signature();
     Wasm::TypeIndex typeIndex = moduleInfo.importFunctionTypeIndices[import.kindIndex];
-    const Wasm::FunctionSignature* importSig = moduleInfo.typeSignatures[typeIndex]->as<Wasm::FunctionSignature>();
+    const Wasm::FunctionSignature* importSig = Wasm::TypeInformation::get(typeIndex).as<Wasm::FunctionSignature>();
     return *builtinSig == *importSig;
 }
 
@@ -141,7 +142,7 @@ bool WebAssemblyCompileOptions::validateBuiltinsAndImportedStrings(const Wasm::M
 bool WebAssemblyCompileOptions::validateBuiltinSetNames() const
 {
     UncheckedKeyHashSet<String> seen;
-    for (const auto& name : m_simpleBuiltinSetNames) {
+    for (const auto& name : m_qualifiedBuiltinSetNames) {
         if (seen.contains(name)) {
             return false;
         }
@@ -152,11 +153,7 @@ bool WebAssemblyCompileOptions::validateBuiltinSetNames() const
 
 void WebAssemblyCompileOptions::moveOptionsInto(Wasm::Module& module)
 {
-    Vector<String> qualifiedNames;
-    for (const auto& simpleName : m_simpleBuiltinSetNames) {
-        qualifiedNames.append(makeString("wasm:"_s, simpleName));
-    }
-    module.setCompileOptions(WTFMove(m_importedStringConstants), WTFMove(qualifiedNames));
+    module.setCompileOptions(WTFMove(m_importedStringConstants), WTFMove(m_qualifiedBuiltinSetNames));
 }
 
 } // namespace JSC

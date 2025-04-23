@@ -56,12 +56,6 @@ static EncodedJSValue jsStringHello()
     return JSValue::encode(jsString(*vm, String::fromLatin1("Hello from a builtin!")));
 }
 
-// static WebAssemblyBuiltin builtinJsStringHello = { ASCIILiteral("hello"), jsStringHello };
-
-// static std::array<WebAssemblyBuiltin*, 1> allJsStringBuiltins = { &builtinJsStringHello };
-
-// static WebAssemblyBuiltinSet jsStringBuiltinSet = { ASCIILiteral("js-string"), ASCIILiteral("wasm:js-string"), std::span(allJsStringBuiltins) };
-
 /*
         All builtin sets
 */

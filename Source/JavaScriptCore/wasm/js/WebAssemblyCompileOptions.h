@@ -34,20 +34,23 @@
 namespace JSC {
 
 /**
- * Captures the information extracted from the optional compilation options argument. The argument
- * was added by the js-string builtins proposal to `WebAssembly.Module` constructor and a number of
- * other APIs.
+ * Captures the information extracted from the optional compilation options argument added by the
+ * js-string builtins proposal to `WebAssembly.Module` constructor and a number of other APIs.
  *
+ * The names listed in the "builtins" option are qualified: "foo" becomes "wasm:foo".
  * The contents of JSStrings in the options object are deep-copied into isolated copies. Eventually
  * the strings are moved into the `Wasm::Module` that ends with their full ownership.
  */
 class WebAssemblyCompileOptions {
 public:
+    /**
+     * Create an instance if `optionsObject` is not a nullptr.
+     */
     static std::optional<WebAssemblyCompileOptions> create(JSGlobalObject*, JSObject* optionsObject);
 
     WebAssemblyCompileOptions(WebAssemblyCompileOptions&& other)
         : m_importedStringConstants(WTFMove(other.m_importedStringConstants))
-        , m_simpleBuiltinSetNames(WTFMove(other.m_simpleBuiltinSetNames))
+        , m_qualifiedBuiltinSetNames(WTFMove(other.m_qualifiedBuiltinSetNames))
     {
     }
     ~WebAssemblyCompileOptions() = default;
@@ -64,7 +67,7 @@ private:
     bool validateImportForBuiltinSetNames(const Wasm::Import& import, const String& importModuleName, const Wasm::ModuleInformation& moduleInfo) const;
 
     std::optional<String> m_importedStringConstants;
-    Vector<String> m_simpleBuiltinSetNames;
+    Vector<String> m_qualifiedBuiltinSetNames;
 };
 
 } // namespace JSC
