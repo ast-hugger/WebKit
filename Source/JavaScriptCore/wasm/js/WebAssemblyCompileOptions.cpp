@@ -1,94 +1,162 @@
+/*
+ * Copyright (C) 2025 Apple Inc. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY APPLE INC. ``AS IS'' AND ANY
+ * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+ * PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL APPLE INC. OR
+ * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+ * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+ * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+ * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
+ * OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
 #include "IteratorOperations.h"
 #include "WasmModuleInformation.h"
 #include "WebAssemblyCompileOptions.h"
 
 namespace JSC {
 
-WebAssemblyCompileOptions WebAssemblyCompileOptions::create(JSGlobalObject* globalObject, JSObject *optionsObject)
+std::optional<WebAssemblyCompileOptions> WebAssemblyCompileOptions::create(JSGlobalObject* globalObject, JSObject *optionsObject)
 {
-    WebAssemblyCompileOptions options;
-    if (optionsObject) {
-        VM& vm = globalObject->vm();
-        
-        // Check for and acquire 'importedStringConstants'.
-        // Acquire means create an isolated copy of the original string, owned exclusively by this object.
-        JSValue importedStringConstantsValue = optionsObject->get(globalObject, PropertyName(Identifier::fromString(vm, "importedStringConstants"_s)));
-        if (importedStringConstantsValue.isString()) {
-            auto contents = asString(importedStringConstantsValue)->value(globalObject);
-            options.m_importedStringConstants = contents.data.isolatedCopy();
-        }
-
-        // Check for and acquire 'builtins'.
-        JSValue builtinsValue = optionsObject->get(globalObject, PropertyName(Identifier::fromString(vm, "builtins"_s)));
-        forEachInIterable(globalObject, builtinsValue, [&] (VM&, JSGlobalObject* globalObject, JSValue nextValue) {
-            if (nextValue.isString()) {
-                auto contents = asString(nextValue)->value(globalObject);
-                options.m_builtins.append(contents.data.isolatedCopy());
-            }
-        });
+    if (!optionsObject) {
+        return std::nullopt;
     }
+    WebAssemblyCompileOptions options;
+    VM& vm = globalObject->vm();
+
+    // Check for and acquire 'importedStringConstants'.
+    // Acquire means create an isolated copy of the original string, owned exclusively by this object.
+    JSValue importedStringConstantsValue = optionsObject->get(globalObject, PropertyName(Identifier::fromString(vm, "importedStringConstants"_s)));
+    if (importedStringConstantsValue.isString()) {
+        auto contents = asString(importedStringConstantsValue)->value(globalObject);
+        options.m_importedStringConstants = contents.data.isolatedCopy();
+    }
+
+    // Check for and acquire 'builtins'.
+    JSValue builtinsValue = optionsObject->get(globalObject, PropertyName(Identifier::fromString(vm, "builtins"_s)));
+    forEachInIterable(globalObject, builtinsValue, [&] (VM&, JSGlobalObject* globalObject, JSValue nextValue) {
+        if (nextValue.isString()) {
+            auto contents = asString(nextValue)->value(globalObject);
+            options.m_simpleBuiltinSetNames.append(contents.data.isolatedCopy());
+        }
+    });
     return options;
 }
 
 WebAssemblyCompileOptions::WebAssemblyCompileOptions()
     : m_importedStringConstants(std::nullopt)
-    , m_builtins(Vector<String>())
+    , m_simpleBuiltinSetNames(Vector<String>())
 {
 }
 
-const String* WebAssemblyCompileOptions::importedStringConstants() const 
+static bool namesInclude(const String& expected, const Vector<String>& names)
 {
-    return m_importedStringConstants ? &*m_importedStringConstants : nullptr;
-}
-
-Vector<const String*> WebAssemblyCompileOptions::builtins() const 
-{
-    Vector<const String*> result;
-    for (const auto& name : m_builtins) {
-        result.append(&name);
+    for (auto& name : names) {
+        if (name == expected) return true;
     }
-    return result;
+    return false;
 }
 
-// Check that the type is 'global const (ref extern)'
-static bool validateImportedConstantsExternType(const Wasm::Import& import) 
+/**
+ * See step 2.1 of: https://webassembly.github.io/js-string-builtins/js-api/#validate-builtins-and-imported-string-for-a-webassembly-module
+ */
+static bool validateImportedStringConstant(const Wasm::Import& import, const Wasm::ModuleInformation& moduleInformation)
 {
+    // auto importType = moduleInformation.typeSignatures[import.kindIndex]; // FIXME: is this the right way of getting the type?
+    // auto expectedType = Wasm::TypeInformation::
     UNUSED_PARAM(import);
+    UNUSED_PARAM(moduleInformation);
     return true;
 }
 
-bool WebAssemblyCompileOptions::validateBuiltinsAndImportedString(Wasm::ModuleInformation& module) const
+/**
+ * See https://webassembly.github.io/js-string-builtins/js-api/#validate-an-import-for-builtins
+ *
+ * Summary:
+ * Fail the validation if:
+ *  - there is a builtin set whose simple name appears in builtinSetNames, and
+ *  - the qualified name of the builtin set matches the import module name, and
+ *  - the builtin set contains a builtin matching the function name, and
+ *  - the builtin type does not match the import type.
+ */
+bool WebAssemblyCompileOptions::validateImportForBuiltinSetNames(const Wasm::Import& import, const String& importModuleName, const Wasm::ModuleInformation& moduleInfo) const
 {
-    if (!validateBuiltinSetNames())
+    if (!namesInclude(importModuleName, m_simpleBuiltinSetNames)) {
+        return true;
+    }
+    WebAssemblyBuiltinSet *builtinSet = WebAssemblyBuiltinSet::findBySimpleName(importModuleName);
+    if (!builtinSet) {
+        return true;
+    }
+    String importName = makeString(import.field);
+    const WebAssemblyBuiltin* builtin = builtinSet->findBuiltin(importName);
+    if (!builtin) {
+        return true;
+    }
+    const Wasm::FunctionSignature* builtinSig = builtin->signature();
+    Wasm::TypeIndex typeIndex = moduleInfo.importFunctionTypeIndices[import.kindIndex];
+    const Wasm::FunctionSignature* importSig = moduleInfo.typeSignatures[typeIndex]->as<Wasm::FunctionSignature>();
+    return *builtinSig == *importSig;
+}
+
+bool WebAssemblyCompileOptions::validateBuiltinsAndImportedStrings(const Wasm::Module& module) const
+{
+    if (!validateBuiltinSetNames()) {
         return false;
-    for (const auto& import : module.imports) {
-        String importName = String::fromUTF8WithLatin1Fallback(import.module.span());
-        if (m_importedStringConstants && *m_importedStringConstants == importName) {
-            if (!validateImportedConstantsExternType(import))
+    }
+    auto& moduleInfo = module.moduleInformation();
+    for (const auto& import : moduleInfo.imports) {
+        String importModuleName = makeString(import.module);
+        if (m_importedStringConstants && *m_importedStringConstants == importModuleName) {
+            if (!validateImportedStringConstant(import, moduleInfo)) {
                 return false;
+            }
         } else {
-            if (!validateImportForBuiltin(import))
+            if (!validateImportForBuiltinSetNames(import, importModuleName, moduleInfo)) {
                 return false;
+            }
         }
     }
     return true;
 }
 
-bool WebAssemblyCompileOptions::validateBuiltinSetNames() const 
+/**
+ * See https://webassembly.github.io/js-string-builtins/js-api/#validate-builtin-set-names
+ *
+ * Summary: the builtin set names should not include duplicates.
+ */
+bool WebAssemblyCompileOptions::validateBuiltinSetNames() const
 {
     UncheckedKeyHashSet<String> seen;
-    for (const auto& name : m_builtins) {
-        if (seen.contains(name))
+    for (const auto& name : m_simpleBuiltinSetNames) {
+        if (seen.contains(name)) {
             return false;
+        }
         seen.add(name);
     }
     return true;
 }
 
-bool WebAssemblyCompileOptions::validateImportForBuiltin(const Wasm::Import& import) const
+void WebAssemblyCompileOptions::moveOptionsInto(Wasm::Module& module)
 {
-    UNUSED_PARAM(import);
-    return true; // FIXME
+    Vector<String> qualifiedNames;
+    for (const auto& simpleName : m_simpleBuiltinSetNames) {
+        qualifiedNames.append(makeString("wasm:"_s, simpleName));
+    }
+    module.setCompileOptions(WTFMove(m_importedStringConstants), WTFMove(qualifiedNames));
 }
 
 } // namespace JSC

@@ -29,6 +29,7 @@
 
 #include "JSObject.h"
 #include "JSPromise.h"
+#include "WebAssemblyCompileOptions.h"
 
 namespace JSC {
 
@@ -49,7 +50,7 @@ public:
 
     DECLARE_INFO;
 
-    JS_EXPORT_PRIVATE static void webAssemblyModuleValidateAsync(JSGlobalObject*, JSPromise*, Vector<uint8_t>&&);
+    JS_EXPORT_PRIVATE static void webAssemblyModuleValidateAsync(JSGlobalObject*, JSPromise*, Vector<uint8_t>&&, std::optional<WebAssemblyCompileOptions>&&);
     static JSValue instantiate(JSGlobalObject*, JSPromise*, const Identifier&, JSValue);
 
     static void instantiateForStreaming(VM&, JSGlobalObject*, JSPromise*, JSWebAssemblyModule*, JSObject*);

@@ -42,19 +42,19 @@ ModuleInformation::~ModuleInformation() = default;
 void ModuleInformation::setCompileOptions(std::optional<String>&& constants, Vector<String>&& qualifiedBuiltinSetNames)
 {
     m_importedStringConstants = WTFMove(constants);
-    m_builtinSets = WTFMove(qualifiedBuiltinSetNames);
+    m_qualifiedBuiltinSetNames = WTFMove(qualifiedBuiltinSetNames);
     // all strings must be isolated copies to be owned by this instance
     if (m_importedStringConstants) {
         ASSERT(m_importedStringConstants.value().impl()->refCount() == 1);
     }
-    for (auto& string : m_builtinSets) {
+    for (auto& string : m_qualifiedBuiltinSetNames) {
         ASSERT(string.impl()->refCount() == 1);
     }
 }
 
 bool ModuleInformation::builtinSetsInclude(const String& qualifiedName) const
 {
-    for (const auto& name : m_builtinSets) {
+    for (const auto& name : m_qualifiedBuiltinSetNames) {
         if (name == qualifiedName)
             return true;
     }

@@ -174,9 +174,9 @@ struct ModuleInformation final : public ThreadSafeRefCounted<ModuleInformation> 
 
     void setCompileOptions(std::optional<String>&& constants, Vector<String>&& qualifiedBuiltinSetNames);
 
-    const String* importedStringConstants() const
+    bool importedStringConstantsEquals(const String& expected) const
     {
-        return m_importedStringConstants ? &*m_importedStringConstants : nullptr;
+        return m_importedStringConstants == expected;
     }
     /// Indicate whether a builtin set by the given qualified name is enabled for this module.
     bool builtinSetsInclude(const String& qualifiedName) const;
@@ -220,10 +220,10 @@ struct ModuleInformation final : public ThreadSafeRefCounted<ModuleInformation> 
     size_t m_totalFunctionSize { 0 };
 
 private:
-    // The following two fields hold isolated copies of Strings (refcount of 1).
-    // Multithreaded code may access these Strings via pointers, but must not make copies.
+    // The following two fields hold fully owned isolated copies of Strings (refcount of 1).
+    // They are not exposed through public APIs.
     std::optional<String> m_importedStringConstants;
-    Vector<String> m_builtinSets;
+    Vector<String> m_qualifiedBuiltinSetNames;
 };
 
     
