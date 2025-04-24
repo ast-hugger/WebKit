@@ -45,7 +45,7 @@ std::optional<WebAssemblyCompileOptions> WebAssemblyCompileOptions::create(JSGlo
         options.m_importedStringConstants = String(contents).isolatedCopy();
     }
 
-    // Check for and acquire 'builtins'.
+    // Check for and acquire 'builtins', qualifying builtin set names in the process.
     JSValue builtinsValue = optionsObject->get(globalObject, PropertyName(Identifier::fromString(vm, "builtins"_s)));
     forEachInIterable(globalObject, builtinsValue, [&] (VM&, JSGlobalObject* globalObject, JSValue nextValue) {
         if (nextValue.isString()) {

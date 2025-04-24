@@ -172,13 +172,14 @@ struct ModuleInformation final : public ThreadSafeRefCounted<ModuleInformation> 
     }
     size_t totalFunctionSize() const { return m_totalFunctionSize; }
 
+    // Set the compile options (builtinSetNames and importedStringConstants) introduced by the js-string proposal.
+    // The strings must be isolated copies. They are exclusively owned by the module info, and it only allows
+    // indirect access to them via the two member functions that follow.
     void setCompileOptions(std::optional<String>&& constants, Vector<String>&& qualifiedBuiltinSetNames);
-
     bool importedStringConstantsEquals(const String& expected) const
     {
-        return m_importedStringConstants == expected;
+        return m_importedStringConstants && m_importedStringConstants.value() == expected;
     }
-    /// Indicate whether a builtin set by the given qualified name is enabled for this module.
     bool builtinSetsInclude(const String& qualifiedName) const;
 
     // FIXME: These should probably be FixedVectors.

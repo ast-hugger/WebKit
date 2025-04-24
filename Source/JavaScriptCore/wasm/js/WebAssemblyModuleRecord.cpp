@@ -128,17 +128,27 @@ static WebAssemblyBuiltinSet* findEnabledBuiltinSet(const String& qualifiedName,
     return WebAssemblyBuiltinSet::findByQualifiedName(qualifiedName);
 }
 
-static void initializeBuiltinImport(VM& vm, WriteBarrier<JSWebAssemblyInstance>& instance, unsigned importIndex, const WebAssemblyBuiltin* builtin)
+static void defineImportedStringConstant(VM& vm, WriteBarrier<JSWebAssemblyInstance>& instance, const Wasm::Import& import)
 {
-    auto* info = instance->importFunctionInfo(importIndex);
+    String text = makeString(import.field);
+    JSValue string = jsString(vm, WTFMove(text));
+    instance->setGlobal(import.kindIndex, string);
+}
+
+static void initializeBuiltinImport(VM& vm, WriteBarrier<JSWebAssemblyInstance>& instance, const Wasm::Import& import, const WebAssemblyBuiltin* builtin)
+{
+    auto* info = instance->importFunctionInfo(import.kindIndex);
     info->importFunctionStub = builtin->implementation();
     info->entrypointLoadLocation = &info->importFunctionStub;
     info->boxedWasmCalleeLoadLocation = &Wasm::NullWasmCallee;
     info->targetInstance.set(vm, instance.get(), instance.get()); // FIXME what is the right owner?
-    info->typeIndex = instance->moduleInformation().importFunctionTypeIndices[importIndex];
+    info->typeIndex = instance->moduleInformation().importFunctionTypeIndices[import.kindIndex];
 }
 
-// https://webassembly.github.io/spec/js-api/#read-the-imports
+/**
+ * Original spec: https://webassembly.github.io/spec/js-api/#read-the-imports
+ * JS-string proposal version: https://webassembly.github.io/js-string-builtins/js-api/#read-the-imports
+ */
 void WebAssemblyModuleRecord::initializeImports(JSGlobalObject* globalObject, JSObject* importObject, Wasm::CreationMode creationMode)
 {
     VM& vm = globalObject->vm();
@@ -159,20 +169,29 @@ void WebAssemblyModuleRecord::initializeImports(JSGlobalObject* globalObject, JS
 
     for (const auto& import : moduleInformation.imports) {
         Identifier moduleName = Identifier::fromString(vm, makeAtomString(import.module));
-        Identifier fieldName = Identifier::fromString(vm, makeAtomString(import.field));
+        // Do not create a fieldName identifier at this point. It may be an importedStringConstant,
+        // which is a waste to turn into an atom string.
 
-        // If the import's module name refers to a builtin set enabled in compileOptions of this module,
-        // hijack the rest of the import resolution process to directly bind the import to the builtin.
+        // Imports related to builtins and importedStringConstants introduced by the js-string
+        // proposal are special and bypass the normal procedure of looking up a value in
+        // importObject.
+
+        if (moduleInformation.importedStringConstantsEquals(moduleName.string().string())) {
+            defineImportedStringConstant(vm, m_instance, import);
+            continue;
+        }
         WebAssemblyBuiltinSet* builtinSet = findEnabledBuiltinSet(moduleName.string().string(), moduleInformation);
         if (builtinSet) {
-            const WebAssemblyBuiltin* builtin = builtinSet->findBuiltin(fieldName.string().string());
+            String fieldName = makeString(import.field);
+            const WebAssemblyBuiltin* builtin = builtinSet->findBuiltin(fieldName);
             if (!builtin) {
                 return exception(createTypeError(globalObject, importFailMessage(import, "import"_s, "is not a valid builtin reference"_s)));
             }
-            initializeBuiltinImport(vm, m_instance, import.kindIndex, builtin);
+            initializeBuiltinImport(vm, m_instance, import, builtin);
             continue;
         }
 
+        Identifier fieldName = Identifier::fromString(vm, makeAtomString(import.field));
         JSValue value;
         if (creationMode == Wasm::CreationMode::FromJS) {
             // 1. Let o be the resultant value of performing Get(importObject, i.module_name).

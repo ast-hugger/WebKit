@@ -30,7 +30,8 @@
 #include "wtf/text/MakeString.h"
 
 #define GET_CALL_FRAME() std::bit_cast<CallFrame*>(__builtin_frame_address(0))
-#define FETCH_WASM_INSTANCE(callFrame) std::bit_cast<JSWebAssemblyInstance*>((frame)->codeBlock())
+#define FETCH_WASM_INSTANCE(callFrame) std::bit_cast<JSWebAssemblyInstance*>((callFrame)->codeBlock())
+#define AS_IMPLEMENTATION_POINTER(function) reinterpret_cast<WebAssemblyBuiltin::ImplementationPtr>(reinterpret_cast<void*>(function))
 
 namespace JSC {
 
@@ -51,9 +52,37 @@ static EncodedJSValue jsStringHello()
 {
     CallFrame* frame = GET_CALL_FRAME();
     JSWebAssemblyInstance* wasmInstance = FETCH_WASM_INSTANCE(frame);
-    VM* vm = &wasmInstance->vm();
+    VM& vm = wasmInstance->vm();
 
-    return JSValue::encode(jsString(*vm, String::fromLatin1("Hello from a builtin!")));
+    return JSValue::encode(jsString(vm, String::fromLatin1("Hello from the 'wasm:js-string:hello' builtin!")));
+}
+
+/**
+ * See https://webassembly.github.io/js-string-builtins/js-api/#js-string-concat
+ *
+ * Summary: if the two values are both strings, return the result of concatenating them.
+ * Otherwise, throw a RuntimeError.
+ */
+static EncodedJSValue jsStringConcat(JSValue left, JSValue right)
+{
+    CallFrame* callFrame = GET_CALL_FRAME();
+    JSWebAssemblyInstance* wasmInstance = FETCH_WASM_INSTANCE(callFrame);
+    VM& vm = wasmInstance->vm();
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
+    if (!left.isString() || !right.isString()) {
+        // how do we throw here without a globalObject?
+        ASSERT(false);
+    }
+
+    auto leftString = asString(left)->tryGetValue();
+    RETURN_IF_EXCEPTION(scope, { });
+    auto rightString = asString(right)->tryGetValue();
+    RETURN_IF_EXCEPTION(scope, { });
+
+    String result = makeString(StringView(leftString), StringView(rightString));
+
+    RELEASE_AND_RETURN(scope, JSValue::encode(jsString(vm, WTFMove(result))));
 }
 
 /*
@@ -70,6 +99,11 @@ WebAssemblyBuiltinSet WebAssemblyBuiltinSet::createJSStringBuiltinSet()
                 ASCIILiteral("hello"),
                 Wasm::TypeInformation::typeDefinitionForFunction({ Wasm::externrefType() }, { }),
                 jsStringHello
+            },
+            {
+                ASCIILiteral("concat"),
+                Wasm::TypeInformation::typeDefinitionForFunction({ Wasm::externrefType() }, { Wasm::externrefType(), Wasm::externrefType() }),
+                AS_IMPLEMENTATION_POINTER(jsStringConcat)
             }
         });
 }
@@ -83,8 +117,6 @@ static Vector<WebAssemblyBuiltinSet>& allBuiltinSets() {
     }
     return *sets;
 }
-
-// static std::array<WebAssemblyBuiltinSet*, 1> allBuiltinSets = { &jsStringBuiltinSet };
 
 WebAssemblyBuiltinSet* WebAssemblyBuiltinSet::findBySimpleName(const String& name)
 {

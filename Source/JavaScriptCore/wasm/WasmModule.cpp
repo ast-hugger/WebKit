@@ -133,7 +133,7 @@ Ref<CalleeGroup> Module::getOrCreateCalleeGroup(VM& vm, MemoryMode mode)
 
 void Module::setCompileOptions(std::optional<String>&& importedStringConstants, Vector<String>&& builtinSets)
 {
-    m_moduleInformation.get().setCompileOptions(WTFMove(importedStringConstants), WTFMove(builtinSets));
+    m_moduleInformation->setCompileOptions(WTFMove(importedStringConstants), WTFMove(builtinSets));
 }
 
 Ref<CalleeGroup> Module::compileSync(VM& vm, MemoryMode mode)

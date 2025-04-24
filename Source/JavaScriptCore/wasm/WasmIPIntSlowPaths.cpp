@@ -917,7 +917,7 @@ static inline UGPRPair resolveWasmCall(JSWebAssemblyInstance* instance, Wasm::Fu
         else
             wasmInstanceReturn = functionInfo->targetInstance.get();
     } else {
-        // Target is a wasm function within the same instance
+        // Target is a wasm function within the same module
         codePtr = *instance->calleeGroup()->entrypointLoadLocationFromFunctionIndexSpace(functionIndex);
         calleeReturn = CalleeBits::encodeNativeCallee(
             instance->calleeGroup()->wasmCalleeFromFunctionIndexSpace(functionIndex));
