@@ -23,8 +23,6 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <iostream> // exploration only; delete
-
 #include "config.h"
 #include "WebAssemblyModuleRecord.h"
 
@@ -140,8 +138,8 @@ static void initializeBuiltinImport(VM& vm, WriteBarrier<JSWebAssemblyInstance>&
     auto* info = instance->importFunctionInfo(import.kindIndex);
     info->importFunctionStub = builtin->implementation();
     info->entrypointLoadLocation = &info->importFunctionStub;
-    info->boxedWasmCalleeLoadLocation = &Wasm::NullWasmCallee;
-    info->targetInstance.set(vm, instance.get(), instance.get()); // FIXME what is the right owner?
+    info->boxedWasmCalleeLoadLocation = &Wasm::NullWasmCallee; // FIXME(vb): provide a more informative callee
+    info->targetInstance.set(vm, instance.get(), instance.get()); // FIXME(vb): what is the right owner?
     info->typeIndex = instance->moduleInformation().importFunctionTypeIndices[import.kindIndex];
 }
 
@@ -169,13 +167,12 @@ void WebAssemblyModuleRecord::initializeImports(JSGlobalObject* globalObject, JS
 
     for (const auto& import : moduleInformation.imports) {
         Identifier moduleName = Identifier::fromString(vm, makeAtomString(import.module));
-        // Do not create a fieldName identifier at this point. It may be an importedStringConstant,
-        // which is a waste to turn into an atom string.
+        // Do not create a fieldName identifier at this point.
+        // If it's an importedStringConstant, it's a waste to turn it into an atom string.
 
         // Imports related to builtins and importedStringConstants introduced by the js-string
         // proposal are special and bypass the normal procedure of looking up a value in
         // importObject.
-
         if (moduleInformation.importedStringConstantsEquals(moduleName.string().string())) {
             defineImportedStringConstant(vm, m_instance, import);
             continue;

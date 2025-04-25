@@ -40,6 +40,10 @@
 
 #define IMPLEMENTATION_POINTER(function) reinterpret_cast<WebAssemblyBuiltin::ImplementationPtr>(reinterpret_cast<void*>(function))
 
+#define WASM_BUILTIN_IMPL(name, ...) \
+    extern "C" EncodedJSValue SYSV_ABI name(__VA_ARGS__) REFERENCED_FROM_ASM WTF_INTERNAL; \
+    extern "C" EncodedJSValue SYSV_ABI name(__VA_ARGS__)
+
 namespace JSC {
 
 const WebAssemblyBuiltin* WebAssemblyBuiltinSet::findBuiltin(const String& name) const
@@ -58,7 +62,7 @@ const WebAssemblyBuiltin* WebAssemblyBuiltinSet::findBuiltin(const String& name)
 /**
  * A scratch builtin for trying things out, not part of the spec.
  */
-static EncodedJSValue jsString_hello()
+WASM_BUILTIN_IMPL(jsString_hello)
 {
     BUILTIN_PROLOGUE(vm, globalObject);
     UNUSED_PARAM(globalObject);
@@ -69,26 +73,23 @@ static EncodedJSValue jsString_hello()
 /**
  * See https://webassembly.github.io/js-string-builtins/js-api/#js-string-concat
  *
- * Summary: if the two values are both strings, return the result of concatenating them.
+ * Summary: if both values are strings, return the result of concatenating them.
  * Otherwise, throw a RuntimeError.
  */
-static EncodedJSValue jsString_concat(JSValue left, JSValue right)
+WASM_BUILTIN_IMPL(jsString_concat, EncodedJSValue arg0, EncodedJSValue arg1)
 {
     BUILTIN_PROLOGUE(vm, globalObject);
     auto scope = DECLARE_THROW_SCOPE(vm);
 
+    JSValue left = JSValue::decode(arg0);
+    JSValue right = JSValue::decode(arg1);
     if (!left.isString() || !right.isString()) {
         JSObject* error = createJSWebAssemblyRuntimeError(globalObject, vm, "invalid concat() arguments: both must be strings"_s);
         return throwVMError(globalObject, scope, error);
     }
 
-    auto leftString = asString(left)->value(globalObject);
-    RETURN_IF_EXCEPTION(scope, { });
-    auto rightString = asString(right)->value(globalObject);
-    RETURN_IF_EXCEPTION(scope, { });
-
-    String result = makeString(StringView(leftString), StringView(rightString));
-    RELEASE_AND_RETURN(scope, JSValue::encode(jsString(vm, WTFMove(result))));
+    JSString* result = jsString(globalObject, asString(left), asString(right)); // creates a rope string
+    RELEASE_AND_RETURN(scope, JSValue::encode(result));
 }
 
 /*
@@ -98,13 +99,12 @@ static EncodedJSValue jsString_concat(JSValue left, JSValue right)
 WebAssemblyBuiltinSet WebAssemblyBuiltinSet::createJSStringBuiltinSet()
 {
     return WebAssemblyBuiltinSet(
-        ASCIILiteral("js-string"),
         ASCIILiteral("wasm:js-string"),
         {
             {
                 ASCIILiteral("hello"),
                 Wasm::TypeInformation::typeDefinitionForFunction({ Wasm::externrefType() }, { }),
-                jsString_hello
+                IMPLEMENTATION_POINTER(jsString_hello)
             },
             {
                 ASCIILiteral("concat"),
@@ -118,19 +118,10 @@ static Vector<WebAssemblyBuiltinSet>& allBuiltinSets() {
     static bool populated = false;
     static Vector<WebAssemblyBuiltinSet>* sets;
     if (!populated) {
-        sets = new Vector<WebAssemblyBuiltinSet>(); // leaked, but not really
+        sets = new Vector<WebAssemblyBuiltinSet>();
         sets->append(WebAssemblyBuiltinSet::createJSStringBuiltinSet());
     }
     return *sets;
-}
-
-WebAssemblyBuiltinSet* WebAssemblyBuiltinSet::findBySimpleName(const String& name)
-{
-    for (auto& builtinSet : allBuiltinSets() ) {
-        if (name == builtinSet.simpleName())
-            return &builtinSet;
-    }
-    return nullptr;
 }
 
 WebAssemblyBuiltinSet* WebAssemblyBuiltinSet::findByQualifiedName(const String& name)

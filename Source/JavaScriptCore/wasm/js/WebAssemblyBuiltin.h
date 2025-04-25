@@ -85,17 +85,12 @@ class WebAssemblyBuiltinSet {
 public:
     static WebAssemblyBuiltinSet createJSStringBuiltinSet();
 
-    /// Look for a builtin set instance with the specified simple name.
-    /// Return a pointer to the set, or nullptr if not found.
-    static WebAssemblyBuiltinSet* findBySimpleName(const String& name);
     /// Look for a builtin set instance with the specified qualified name.
     /// Return a pointer to the set, or nullptr if not found.
     static WebAssemblyBuiltinSet* findByQualifiedName(const String& name);
 
     ~WebAssemblyBuiltinSet() = default;
 
-    /// The set name without the "wasm:" prefix.
-    const ASCIILiteral& simpleName() const;
     /// The set name with the "wasm:" prefix.
     const ASCIILiteral& qualifiedName() const;
     /// Search in the set for a builtin with the given name.
@@ -103,23 +98,16 @@ public:
     const WebAssemblyBuiltin* findBuiltin(const String& name) const;
 
 private:
-    WebAssemblyBuiltinSet(ASCIILiteral simpleName, ASCIILiteral qualifiedName, Vector<WebAssemblyBuiltin>&& builtins);
+    WebAssemblyBuiltinSet(ASCIILiteral qualifiedName, Vector<WebAssemblyBuiltin>&& builtins);
 
-    ASCIILiteral m_simpleName;
     ASCIILiteral m_qualifiedName;
     Vector<WebAssemblyBuiltin> m_builtins;
 };
 
-inline WebAssemblyBuiltinSet::WebAssemblyBuiltinSet(ASCIILiteral simpleName, ASCIILiteral qualifiedName, Vector<WebAssemblyBuiltin>&& builtins)
-    : m_simpleName(simpleName)
-    , m_qualifiedName(qualifiedName)
+inline WebAssemblyBuiltinSet::WebAssemblyBuiltinSet(ASCIILiteral qualifiedName, Vector<WebAssemblyBuiltin>&& builtins)
+    : m_qualifiedName(qualifiedName)
     , m_builtins(WTFMove(builtins))
 {
-}
-
-inline const ASCIILiteral& WebAssemblyBuiltinSet::simpleName() const
-{
-    return m_simpleName;
 }
 
 inline const ASCIILiteral& WebAssemblyBuiltinSet::qualifiedName() const
