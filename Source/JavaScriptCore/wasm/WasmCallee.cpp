@@ -125,9 +125,6 @@ inline void Callee::runWithDowncast(const Func& func)
     case CompilationMode::WasmToJSMode:
         func(static_cast<WasmToJSCallee*>(this));
         break;
-    case CompilationMode::IntrinsicMode:
-        func(static_cast<IntrinsicCallee*>(this));
-        break;
     }
 }
 
@@ -591,7 +588,7 @@ BBQCallee::~BBQCallee()
 #endif
 
 IntrinsicCallee::IntrinsicCallee(ImplementationFunctionPtr implFunction, FunctionSpaceIndex index, std::pair<const Name*, RefPtr<NameSection>>&& name)
-    : Callee(Wasm::CompilationMode::IntrinsicMode, index, WTFMove(name))
+    : Callee(Wasm::CompilationMode::WasmToJSMode, index, WTFMove(name)) // FIXME(vb): just using whatever mode feels okay, what's the right mode here?
     , m_cppFunction(implFunction)
 {
 }

@@ -74,7 +74,7 @@ static bool namesInclude(const String& expected, const Vector<String>& names)
 /**
  * See step 2.1 of: https://webassembly.github.io/js-string-builtins/js-api/#validate-builtins-and-imported-string-for-a-webassembly-module
  *
- * Summary: the import should be an immutable global of type externref.
+ * Informally: the import should be an immutable global of type externref.
  */
 static bool validateImportedStringConstant(const Wasm::Import& import, const Wasm::ModuleInformation& moduleInformation)
 {
@@ -88,7 +88,7 @@ static bool validateImportedStringConstant(const Wasm::Import& import, const Was
 /**
  * See https://webassembly.github.io/js-string-builtins/js-api/#validate-an-import-for-builtins
  *
- * Summary:
+ * Informally:
  * Fail the validation if:
  *  - there is a builtin set whose simple name appears in builtinSetNames, and
  *  - the qualified name of the builtin set matches the import module name, and
@@ -139,7 +139,7 @@ bool WebAssemblyCompileOptions::validateBuiltinsAndImportedStrings(const Wasm::M
 /**
  * See https://webassembly.github.io/js-string-builtins/js-api/#validate-builtin-set-names
  *
- * Summary: the builtin set names should not include duplicates.
+ * Informally: the builtin set names should not include duplicates.
  */
 bool WebAssemblyCompileOptions::validateBuiltinSetNames() const
 {
