@@ -319,7 +319,7 @@ JSWebAssemblyModule* WebAssemblyModuleConstructor::createModule(JSGlobalObject* 
 
     if (options) {
         if (!options->validateBuiltinsAndImportedStrings(result.value())) {
-            throwException(globalObject, scope, createJSWebAssemblyCompileError(globalObject, vm, result.error()));
+            throwException(globalObject, scope, createJSWebAssemblyCompileError(globalObject, vm, "builtins and importedStrings validation failed"_s));
             return nullptr;
         }
         options->moveOptionsInto(result.value());

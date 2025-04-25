@@ -73,14 +73,16 @@ static bool namesInclude(const String& expected, const Vector<String>& names)
 
 /**
  * See step 2.1 of: https://webassembly.github.io/js-string-builtins/js-api/#validate-builtins-and-imported-string-for-a-webassembly-module
+ *
+ * Summary: the import should be an immutable global of type externref.
  */
 static bool validateImportedStringConstant(const Wasm::Import& import, const Wasm::ModuleInformation& moduleInformation)
 {
-    // auto importType = moduleInformation.typeSignatures[import.kindIndex]; // FIXME: is this the right way of getting the type?
-    // auto expectedType = Wasm::TypeInformation::
-    UNUSED_PARAM(import);
-    UNUSED_PARAM(moduleInformation);
-    return true;
+    if (import.kind != Wasm::ExternalKind::Global) {
+        return false;
+    }
+    const Wasm::GlobalInformation& global = moduleInformation.globals[import.kindIndex];
+    return global.mutability == Wasm::Immutable && Wasm::isExternref(global.type);
 }
 
 /**

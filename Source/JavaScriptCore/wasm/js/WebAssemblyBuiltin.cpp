@@ -25,13 +25,20 @@
 
  #if ENABLE(WEBASSEMBLY)
 
+#include "JSWebAssemblyRuntimeError.h"
 #include "WebAssemblyBuiltin.h"
 
 #include "wtf/text/MakeString.h"
 
 #define GET_CALL_FRAME() std::bit_cast<CallFrame*>(__builtin_frame_address(0))
 #define FETCH_WASM_INSTANCE(callFrame) std::bit_cast<JSWebAssemblyInstance*>((callFrame)->codeBlock())
-#define AS_IMPLEMENTATION_POINTER(function) reinterpret_cast<WebAssemblyBuiltin::ImplementationPtr>(reinterpret_cast<void*>(function))
+#define BUILTIN_PROLOGUE(_vm, _globalObject) \
+    CallFrame* _callFrame = GET_CALL_FRAME(); \
+    JSWebAssemblyInstance* _wasmInstance = FETCH_WASM_INSTANCE(_callFrame); \
+    VM& _vm = _wasmInstance->vm(); \
+    JSGlobalObject* _globalObject = _wasmInstance->globalObject();
+
+#define IMPLEMENTATION_POINTER(function) reinterpret_cast<WebAssemblyBuiltin::ImplementationPtr>(reinterpret_cast<void*>(function))
 
 namespace JSC {
 
@@ -48,11 +55,13 @@ const WebAssemblyBuiltin* WebAssemblyBuiltinSet::findBuiltin(const String& name)
         wasm:js-string builtin set
 */
 
-static EncodedJSValue jsStringHello()
+/**
+ * A scratch builtin for trying things out, not part of the spec.
+ */
+static EncodedJSValue jsString_hello()
 {
-    CallFrame* frame = GET_CALL_FRAME();
-    JSWebAssemblyInstance* wasmInstance = FETCH_WASM_INSTANCE(frame);
-    VM& vm = wasmInstance->vm();
+    BUILTIN_PROLOGUE(vm, globalObject);
+    UNUSED_PARAM(globalObject);
 
     return JSValue::encode(jsString(vm, String::fromLatin1("Hello from the 'wasm:js-string:hello' builtin!")));
 }
@@ -63,25 +72,22 @@ static EncodedJSValue jsStringHello()
  * Summary: if the two values are both strings, return the result of concatenating them.
  * Otherwise, throw a RuntimeError.
  */
-static EncodedJSValue jsStringConcat(JSValue left, JSValue right)
+static EncodedJSValue jsString_concat(JSValue left, JSValue right)
 {
-    CallFrame* callFrame = GET_CALL_FRAME();
-    JSWebAssemblyInstance* wasmInstance = FETCH_WASM_INSTANCE(callFrame);
-    VM& vm = wasmInstance->vm();
+    BUILTIN_PROLOGUE(vm, globalObject);
     auto scope = DECLARE_THROW_SCOPE(vm);
 
     if (!left.isString() || !right.isString()) {
-        // how do we throw here without a globalObject?
-        ASSERT(false);
+        JSObject* error = createJSWebAssemblyRuntimeError(globalObject, vm, "invalid concat() arguments: both must be strings"_s);
+        return throwVMError(globalObject, scope, error);
     }
 
-    auto leftString = asString(left)->tryGetValue();
+    auto leftString = asString(left)->value(globalObject);
     RETURN_IF_EXCEPTION(scope, { });
-    auto rightString = asString(right)->tryGetValue();
+    auto rightString = asString(right)->value(globalObject);
     RETURN_IF_EXCEPTION(scope, { });
 
     String result = makeString(StringView(leftString), StringView(rightString));
-
     RELEASE_AND_RETURN(scope, JSValue::encode(jsString(vm, WTFMove(result))));
 }
 
@@ -98,12 +104,12 @@ WebAssemblyBuiltinSet WebAssemblyBuiltinSet::createJSStringBuiltinSet()
             {
                 ASCIILiteral("hello"),
                 Wasm::TypeInformation::typeDefinitionForFunction({ Wasm::externrefType() }, { }),
-                jsStringHello
+                jsString_hello
             },
             {
                 ASCIILiteral("concat"),
                 Wasm::TypeInformation::typeDefinitionForFunction({ Wasm::externrefType() }, { Wasm::externrefType(), Wasm::externrefType() }),
-                AS_IMPLEMENTATION_POINTER(jsStringConcat)
+                IMPLEMENTATION_POINTER(jsString_concat)
             }
         });
 }

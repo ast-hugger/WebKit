@@ -179,7 +179,7 @@ void JSWebAssembly::webAssemblyModuleValidateAsync(JSGlobalObject* globalObject,
             }
             if (compileOptions) {
                 if (!compileOptions->validateBuiltinsAndImportedStrings(result.value())) {
-                    throwException(globalObject, scope, createJSWebAssemblyCompileError(globalObject, vm, "builtin validation failed"_s));
+                    throwException(globalObject, scope, createJSWebAssemblyCompileError(globalObject, vm, "builtins and importedStrings validation failed"_s));
                     promise->rejectWithCaughtException(globalObject, scope);
                     return;
                 }
@@ -288,7 +288,7 @@ static void compileAndInstantiate(VM& vm, JSGlobalObject* globalObject, JSPromis
             }
             if (compileOptions) {
                 if (!compileOptions->validateBuiltinsAndImportedStrings(result.value())) {
-                    throwException(globalObject, scope, createJSWebAssemblyCompileError(globalObject, vm, "invalid builtins and importString"_s));
+                    throwException(globalObject, scope, createJSWebAssemblyCompileError(globalObject, vm, "builtins and importedStrings validation failed"_s));
                     promise->rejectWithCaughtException(globalObject, scope);
                     return;
                 }
