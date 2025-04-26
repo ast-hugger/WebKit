@@ -587,9 +587,9 @@ BBQCallee::~BBQCallee()
 
 #endif
 
-IntrinsicCallee::IntrinsicCallee(ImplementationFunctionPtr implFunction, FunctionSpaceIndex index, std::pair<const Name*, RefPtr<NameSection>>&& name)
-    : Callee(Wasm::CompilationMode::WasmToJSMode, index, WTFMove(name)) // FIXME(vb): just using whatever mode feels okay, what's the right mode here?
-    , m_cppFunction(implFunction)
+WasmBuiltinCallee::WasmBuiltinCallee(FunctionSpaceIndex index, std::pair<const Name*, RefPtr<NameSection>>&& name)
+    : Callee(Wasm::CompilationMode::IPIntMode, index, WTFMove(name)) // FIXME(vb): just using whatever mode feels okay, what's the right mode here?
+    // , m_builtin(builtin)
 {
 }
 

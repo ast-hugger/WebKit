@@ -100,7 +100,7 @@ bool WebAssemblyCompileOptions::validateImportForBuiltinSetNames(const Wasm::Imp
     if (!namesInclude(importModuleName, m_qualifiedBuiltinSetNames)) {
         return true;
     }
-    WebAssemblyBuiltinSet *builtinSet = WebAssemblyBuiltinSet::findByQualifiedName(importModuleName);
+    const WebAssemblyBuiltinSet *builtinSet = WebAssemblyBuiltinRegistry::singleton().findByQualifiedName(importModuleName);
     if (!builtinSet) {
         return true;
     }

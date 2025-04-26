@@ -80,40 +80,47 @@ inline WebAssemblyBuiltin::ImplementationPtr WebAssemblyBuiltin::implementation(
  * A collection of builtins. Made available for importing if listed in the
  * "builtins" compile option under its simple name. Module imports reference
  * it by the qualified name.
+ * 
+ * Use `WebAssemblyBuiltinRegistry::singleton().findByQualifiedName()` to get
+ * an instance.
  */
 class WebAssemblyBuiltinSet {
 public:
-    static WebAssemblyBuiltinSet createJSStringBuiltinSet();
-
-    /// Look for a builtin set instance with the specified qualified name.
-    /// Return a pointer to the set, or nullptr if not found.
-    static WebAssemblyBuiltinSet* findByQualifiedName(const String& name);
-
     ~WebAssemblyBuiltinSet() = default;
 
     /// The set name with the "wasm:" prefix.
-    const ASCIILiteral& qualifiedName() const;
+    const ASCIILiteral& qualifiedName() const
+    {
+        return m_qualifiedName;
+    }
     /// Search in the set for a builtin with the given name.
     /// Return a pointer to the builtin or nullptr if not found.
     const WebAssemblyBuiltin* findBuiltin(const String& name) const;
 
-private:
-    WebAssemblyBuiltinSet(ASCIILiteral qualifiedName, Vector<WebAssemblyBuiltin>&& builtins);
+protected:
+    WebAssemblyBuiltinSet(ASCIILiteral qualifiedName) : m_qualifiedName(qualifiedName)
+    {
+    }
 
     ASCIILiteral m_qualifiedName;
     Vector<WebAssemblyBuiltin> m_builtins;
 };
 
-inline WebAssemblyBuiltinSet::WebAssemblyBuiltinSet(ASCIILiteral qualifiedName, Vector<WebAssemblyBuiltin>&& builtins)
-    : m_qualifiedName(qualifiedName)
-    , m_builtins(WTFMove(builtins))
-{
-}
+class WebAssemblyBuiltinRegistry {
+public:
+    static void initialize();
+    static WebAssemblyBuiltinRegistry& singleton();
 
-inline const ASCIILiteral& WebAssemblyBuiltinSet::qualifiedName() const
-{
-    return m_qualifiedName;
-}
+    WebAssemblyBuiltinRegistry();
+
+    /// Look for a builtin set instance with the specified qualified name.
+    /// Return a pointer to the set, or nullptr if not found.
+    const WebAssemblyBuiltinSet* findByQualifiedName(const String&);
+
+private:
+    Lock m_lock;
+    Vector<WebAssemblyBuiltinSet> m_builtinSets WTF_GUARDED_BY_LOCK(m_lock);
+};
 
 } // namespace JSC
 

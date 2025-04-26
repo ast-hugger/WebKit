@@ -45,6 +45,7 @@
 #include "WasmCapabilities.h"
 #include "WasmFaultSignalHandler.h"
 #include "WasmThunks.h"
+#include "wasm/js/WebAssemblyBuiltin.h"
 #include <mutex>
 #include <wtf/Threading.h>
 #include <wtf/threads/Signals.h>
@@ -131,6 +132,7 @@ void initialize()
 #if ENABLE(WEBASSEMBLY) && ENABLE(JIT)
         if (Wasm::isSupported()) {
             Wasm::Thunks::initialize();
+            WebAssemblyBuiltinRegistry::initialize();
         }
 #endif
 

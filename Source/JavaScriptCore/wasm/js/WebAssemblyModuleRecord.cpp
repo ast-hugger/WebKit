@@ -119,11 +119,11 @@ Synchronousness WebAssemblyModuleRecord::link(JSGlobalObject* globalObject, JSVa
     return Synchronousness::Sync;
 }
 
-static WebAssemblyBuiltinSet* findEnabledBuiltinSet(const String& qualifiedName, const Wasm::ModuleInformation& moduleInformation)
+static const WebAssemblyBuiltinSet* findEnabledBuiltinSet(const String& qualifiedName, const Wasm::ModuleInformation& moduleInformation)
 {
     if (!moduleInformation.builtinSetsInclude(qualifiedName))
         return nullptr;
-    return WebAssemblyBuiltinSet::findByQualifiedName(qualifiedName);
+    return WebAssemblyBuiltinRegistry::singleton().findByQualifiedName(qualifiedName);
 }
 
 static void defineImportedStringConstant(VM& vm, WriteBarrier<JSWebAssemblyInstance>& instance, const Wasm::Import& import)
@@ -177,7 +177,7 @@ void WebAssemblyModuleRecord::initializeImports(JSGlobalObject* globalObject, JS
             defineImportedStringConstant(vm, m_instance, import);
             continue;
         }
-        WebAssemblyBuiltinSet* builtinSet = findEnabledBuiltinSet(moduleName.string().string(), moduleInformation);
+        const WebAssemblyBuiltinSet* builtinSet = findEnabledBuiltinSet(moduleName.string().string(), moduleInformation);
         if (builtinSet) {
             String fieldName = makeString(import.field);
             const WebAssemblyBuiltin* builtin = builtinSet->findBuiltin(fieldName);
@@ -285,7 +285,7 @@ void WebAssemblyModuleRecord::initializeImports(JSGlobalObject* globalObject, JS
             // Note: adding the JSCell to the instance list fulfills closure requirements b. above (the WebAssembly.Instance wil be kept alive) and v. below (the JSFunction).
 
             auto* info = m_instance->importFunctionInfo(import.kindIndex);
-            info->importFunctionStub = nullptr; // HACK: expected by finalizeCreation as a signal to do the usual work
+            info->importFunctionStub = nullptr; // null distinguishes this case from builtin imports, which set the stub to non-null
             info->boxedWasmCalleeLoadLocation = boxedWasmCalleeLoadLocation;
             info->targetInstance.setMayBeNull(vm, m_instance.get(), calleeInstance);
             info->entrypointLoadLocation = entrypointLoadLocation;

@@ -222,7 +222,7 @@ struct ModuleInformation final : public ThreadSafeRefCounted<ModuleInformation> 
 
 private:
     // The following two fields hold fully owned isolated copies of Strings (refcount of 1).
-    // They are not exposed through public APIs.
+    // They are not directly exposed through public APIs.
     std::optional<String> m_importedStringConstants;
     Vector<String> m_qualifiedBuiltinSetNames;
 };
