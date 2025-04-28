@@ -41,19 +41,30 @@
 
 #define IMPLEMENTATION_POINTER(function) reinterpret_cast<WebAssemblyBuiltin::ImplementationPtr>(reinterpret_cast<void*>(function))
 
+/// Define a Wasm builtin returning an externref.
 #define DEFINE_WASM_BUILTIN(name, ...) \
     extern "C" EncodedJSValue SYSV_ABI name(__VA_ARGS__) REFERENCED_FROM_ASM WTF_INTERNAL; \
     extern "C" EncodedJSValue SYSV_ABI name(__VA_ARGS__)
+
+/// Define a Wasm builtin returning an int32.
+#define DEFINE_WASM_BUILTIN_I32(name, ...) \
+    extern "C" int32_t SYSV_ABI name(__VA_ARGS__) REFERENCED_FROM_ASM WTF_INTERNAL; \
+    extern "C" int32_t SYSV_ABI name(__VA_ARGS__)
 
 namespace JSC {
 
 const WebAssemblyBuiltin* WebAssemblyBuiltinSet::findBuiltin(const String& name) const
 {
-    for (auto& builtin : m_builtins) {
-        if (name == builtin.name())
-            return &builtin;
-    }
-    return nullptr;
+    auto it = m_builtinsByName.find(name);
+    return it != m_builtinsByName.end() ? it->value : nullptr;
+}
+
+void WebAssemblyBuiltinSet::add(WebAssemblyBuiltin&& builtin)
+{
+    m_builtins.append(WTFMove(builtin));
+    auto* added = &m_builtins.last();
+    String name = String(added->name());
+    m_builtinsByName.add(name, added);
 }
 
 /*
@@ -69,6 +80,36 @@ DEFINE_WASM_BUILTIN(jsString_hello)
     UNUSED_PARAM(globalObject);
 
     return JSValue::encode(jsString(vm, String::fromLatin1("Hello from the 'wasm:js-string:hello' builtin!")));
+}
+
+/**
+ * See: https://webassembly.github.io/js-string-builtins/js-api/#js-string-cast
+ *
+ * Summary: if the arg is a string, return it, otherwise throw a RuntimeError.
+ */
+DEFINE_WASM_BUILTIN(jsString_cast, EncodedJSValue arg)
+{
+    BUILTIN_PROLOGUE(vm, globalObject);
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
+    JSValue value = JSValue::decode(arg);
+    if (!value.isString()) {
+        JSObject* error = createJSWebAssemblyRuntimeError(globalObject, vm, "the value is not a string"_s);
+        return throwVMError(globalObject, scope, error);
+    }
+
+    RELEASE_AND_RETURN(scope, arg);
+}
+
+/**
+ * See https://webassembly.github.io/js-string-builtins/js-api/#js-string-test
+ *
+ * Summary: return 1 if the arg is a string, 0 otherwise.
+ */
+DEFINE_WASM_BUILTIN_I32(jsString_test, EncodedJSValue arg)
+{
+    JSValue value = JSValue::decode(arg);
+    return value.isString() ? 1 : 0;
 }
 
 /**
@@ -93,57 +134,58 @@ DEFINE_WASM_BUILTIN(jsString_concat, EncodedJSValue arg0, EncodedJSValue arg1)
     RELEASE_AND_RETURN(scope, JSValue::encode(result));
 }
 
-class WebAssemblyBuiltinSetJSString final : public WebAssemblyBuiltinSet {
-    friend class WebAssemblyBuiltinRegistry;
-
-    WebAssemblyBuiltinSetJSString() : WebAssemblyBuiltinSet(ASCIILiteral("wasm:js-string"))
-    {
-        m_builtins.append(WebAssemblyBuiltin(
-            ASCIILiteral("hello"),
-            Wasm::TypeInformation::typeDefinitionForFunction(
-                { Wasm::externrefType() },
-                { }),
-            IMPLEMENTATION_POINTER(jsString_hello)
-        ));
-        m_builtins.append(WebAssemblyBuiltin(
-            ASCIILiteral("concat"),
-            Wasm::TypeInformation::typeDefinitionForFunction(
-                { Wasm::externrefType() },
-                { Wasm::externrefType(), Wasm::externrefType() }),
-            IMPLEMENTATION_POINTER(jsString_concat)
-        ));
-    }
-};
-
-/*
-        Registry
-*/
-
-static LazyNeverDestroyed<WebAssemblyBuiltinRegistry> registry;
-
-WebAssemblyBuiltinRegistry& WebAssemblyBuiltinRegistry::singleton()
+WebAssemblyBuiltinSet WebAssemblyBuiltinSet::jsString()
 {
-    return registry.get();
+    WebAssemblyBuiltinSet builtinSet = WebAssemblyBuiltinSet("wasm:js-string");
+    builtinSet.add(WebAssemblyBuiltin(
+        ASCIILiteral("hello"),
+        Wasm::TypeInformation::typeDefinitionForFunction(
+            { Wasm::externrefType() },
+            { }),
+        IMPLEMENTATION_POINTER(jsString_hello)
+    ));
+    builtinSet.add(WebAssemblyBuiltin(
+        ASCIILiteral("cast"),
+        Wasm::TypeInformation::typeDefinitionForFunction(
+            { Wasm::externrefType() },
+            { Wasm::externrefType() }),
+        IMPLEMENTATION_POINTER(jsString_cast)
+    ));
+    builtinSet.add(WebAssemblyBuiltin(
+        ASCIILiteral("test"),
+        Wasm::TypeInformation::typeDefinitionForFunction(
+            { Wasm::Types::I32 },
+            { Wasm::externrefType() }),
+        IMPLEMENTATION_POINTER(jsString_test)
+    ));
+    builtinSet.add(WebAssemblyBuiltin(
+        ASCIILiteral("concat"),
+        Wasm::TypeInformation::typeDefinitionForFunction(
+            { Wasm::externrefType() },
+            { Wasm::externrefType(), Wasm::externrefType() }),
+        IMPLEMENTATION_POINTER(jsString_concat)
+    ));
+    return builtinSet;
 }
 
-void WebAssemblyBuiltinRegistry::initialize()
+const WebAssemblyBuiltinRegistry& WebAssemblyBuiltinRegistry::singleton()
 {
-    registry.construct();
+    static NeverDestroyed<WebAssemblyBuiltinRegistry> registry;
+    return registry.get();
 }
 
 WebAssemblyBuiltinRegistry::WebAssemblyBuiltinRegistry()
 {
-    m_builtinSets.append(WebAssemblyBuiltinSetJSString());
+    m_builtinSets.append(WebAssemblyBuiltinSet::jsString());
 }
 
-const WebAssemblyBuiltinSet* WebAssemblyBuiltinRegistry::findByQualifiedName(const String& name)
+// The registry is immutable once constructed so we don't worry about concurrency.
+const WebAssemblyBuiltinSet* WebAssemblyBuiltinRegistry::findByQualifiedName(const String& name) const
 {
-    Locker locker { m_lock };
-    for (auto& builtinSet : m_builtinSets) {
-        if (name == builtinSet.qualifiedName())
-            return &builtinSet;
-    }
-    return nullptr;
+    size_t index = m_builtinSets.findIf([&](auto& builtinSet) {
+        return name == builtinSet.qualifiedName();
+    });
+    return index != notFound ? &m_builtinSets[index] : nullptr;
 }
 
 } // namespace JSC

@@ -132,7 +132,6 @@ void initialize()
 #if ENABLE(WEBASSEMBLY) && ENABLE(JIT)
         if (Wasm::isSupported()) {
             Wasm::Thunks::initialize();
-            WebAssemblyBuiltinRegistry::initialize();
         }
 #endif
 

@@ -36,18 +36,33 @@
 namespace JSC {
 
 /**
- * An individual builtin contained in a builtin set.
+ * An individual builtin. A member of a builtin set.
  */
 class WebAssemblyBuiltin {
 public:
     using ImplementationPtr = EncodedJSValue (*)();
 
-    WebAssemblyBuiltin(ASCIILiteral name, RefPtr<Wasm::TypeDefinition> type, ImplementationPtr implementation);
-    ~WebAssemblyBuiltin() = default;
+    WebAssemblyBuiltin(ASCIILiteral name, RefPtr<Wasm::TypeDefinition> type, ImplementationPtr implementation)
+        : m_name(name)
+        , m_type(type)
+        , m_implementation(implementation)
+    {
+    }
+    WebAssemblyBuiltin(WebAssemblyBuiltin&&) = default;
+    // ~WebAssemblyBuiltin() = default;
 
-    const ASCIILiteral& name() const;
-    const Wasm::FunctionSignature* signature() const;
-    ImplementationPtr implementation() const;
+    const ASCIILiteral& name() const
+    {
+        return m_name;
+    }
+    const Wasm::FunctionSignature* signature() const
+    {
+        return m_type->as<Wasm::FunctionSignature>();
+    }
+    ImplementationPtr implementation() const
+    {
+        return m_implementation;
+    }
 
 private:
     ASCIILiteral m_name;
@@ -55,38 +70,17 @@ private:
     ImplementationPtr m_implementation;
 };
 
-inline WebAssemblyBuiltin::WebAssemblyBuiltin(ASCIILiteral name, RefPtr<Wasm::TypeDefinition> type, ImplementationPtr implementation)
-    : m_name(name)
-    , m_type(type)
-    , m_implementation(implementation)
-{
-}
-
-inline const ASCIILiteral& WebAssemblyBuiltin::name() const
-{
-    return m_name;
-}
-
-inline const Wasm::FunctionSignature* WebAssemblyBuiltin::signature() const {
-    return m_type->as<Wasm::FunctionSignature>();
-}
-
-inline WebAssemblyBuiltin::ImplementationPtr WebAssemblyBuiltin::implementation() const
-{
-    return m_implementation;
-}
-
 /**
- * A collection of builtins. Made available for importing if listed in the
- * "builtins" compile option under its simple name. Module imports reference
- * it by the qualified name.
- * 
- * Use `WebAssemblyBuiltinRegistry::singleton().findByQualifiedName()` to get
- * an instance.
+ * A collection of builtins such as `wasm:js-string`.
+ *
+ * Sets are created and managed by a builtin registry. Use
+ * `WebAssemblyBuiltinRegistry::singleton().findByQualifiedName` to get an instance.
  */
 class WebAssemblyBuiltinSet {
 public:
-    ~WebAssemblyBuiltinSet() = default;
+    friend class WebAssemblyBuiltinRegistry;
+
+    WebAssemblyBuiltinSet(WebAssemblyBuiltinSet&&) = default;
 
     /// The set name with the "wasm:" prefix.
     const ASCIILiteral& qualifiedName() const
@@ -97,29 +91,33 @@ public:
     /// Return a pointer to the builtin or nullptr if not found.
     const WebAssemblyBuiltin* findBuiltin(const String& name) const;
 
-protected:
+private:
+    /// Create and return the `wasm:js-string` builtin set.
+    static WebAssemblyBuiltinSet jsString();
+
     WebAssemblyBuiltinSet(ASCIILiteral qualifiedName) : m_qualifiedName(qualifiedName)
     {
     }
 
+    void add(WebAssemblyBuiltin&&);
+
     ASCIILiteral m_qualifiedName;
     Vector<WebAssemblyBuiltin> m_builtins;
+    UncheckedKeyHashMap<String, WebAssemblyBuiltin*> m_builtinsByName;
 };
 
 class WebAssemblyBuiltinRegistry {
 public:
-    static void initialize();
-    static WebAssemblyBuiltinRegistry& singleton();
+    static const WebAssemblyBuiltinRegistry& singleton();
 
     WebAssemblyBuiltinRegistry();
 
     /// Look for a builtin set instance with the specified qualified name.
     /// Return a pointer to the set, or nullptr if not found.
-    const WebAssemblyBuiltinSet* findByQualifiedName(const String&);
+    const WebAssemblyBuiltinSet* findByQualifiedName(const String&) const;
 
 private:
-    Lock m_lock;
-    Vector<WebAssemblyBuiltinSet> m_builtinSets WTF_GUARDED_BY_LOCK(m_lock);
+    Vector<WebAssemblyBuiltinSet> m_builtinSets;
 };
 
 } // namespace JSC
