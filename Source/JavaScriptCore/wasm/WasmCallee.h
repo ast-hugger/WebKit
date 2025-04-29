@@ -51,6 +51,7 @@
 namespace JSC {
 
 class LLIntOffsetsExtractor;
+class WebAssemblyBuiltin;
 
 namespace B3 {
 class PCToOriginMap;
@@ -576,18 +577,14 @@ private:
 using LLIntCallees = ThreadSafeRefCountedFixedVector<Ref<LLIntCallee>>;
 using IPIntCallees = ThreadSafeRefCountedFixedVector<Ref<IPIntCallee>>;
 
-class WebAssemblyBuiltin;
-
 class WasmBuiltinCallee final : public Callee {
-    WTF_MAKE_COMPACT_TZONE_ALLOCATED(WasmBuiltinCallee);
+    // FIXME(vb): why does enabling the following cause a linker error?
+    // WTF_MAKE_COMPACT_TZONE_ALLOCATED(WasmBuiltinCallee);
     friend class Callee;
-
 public:
-    WasmBuiltinCallee(FunctionSpaceIndex, std::pair<const Name*, RefPtr<NameSection>>&&);
+    WasmBuiltinCallee(const WebAssemblyBuiltin*, FunctionSpaceIndex, std::pair<const Name*, RefPtr<NameSection>>&&);
 
-    const WebAssemblyBuiltin* builtin() {
-        return m_builtin;
-    }
+    const WebAssemblyBuiltin* builtin() { return m_builtin; }
 
 protected:
     CodePtr<WasmEntryPtrTag> entrypointImpl() const { return { }; }

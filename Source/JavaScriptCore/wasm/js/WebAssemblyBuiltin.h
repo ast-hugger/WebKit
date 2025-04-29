@@ -63,9 +63,9 @@ public:
     {
         return m_implementation;
     }
-    // Create a JSFunction with the same behavior as the builtin, to be used when
-    // this builtin is reexported.
-    JSObject* reexportRepresentative(JSGlobalObject*) const;
+    /// A re-export representative is a JS function with the same behavior as the builtin,
+    /// that can be used in place of the builtin if it happens to be re-exported by the module.
+    JSObject* reExportRepresentative(JSGlobalObject*) const;
 
 private:
     ASCIILiteral m_name;

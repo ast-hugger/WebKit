@@ -248,7 +248,7 @@ void JSWebAssemblyInstance::finalizeCreation(VM& vm, JSGlobalObject* globalObjec
             // the import is a Wasm function
             info->importFunctionStub = wasmCalleeGroup->wasmToWasmExitStub(functionSpaceIndex);
             ASSERT(info->boxedWasmCalleeLoadLocation && *info->boxedWasmCalleeLoadLocation);
-        } // else: the import is a builtin, importFunctionStub is already set up - nothing to do here
+        } // else: the import is a builtin, was fully set up by ModuleRecord's intializeImports
     }
 
     if (creationMode == CreationMode::FromJS) {

@@ -298,6 +298,10 @@ public:
     void setFaultPC(void* pc) { m_faultPC = pc; };
     void* faultPC() const { return m_faultPC; }
 
+    Vector<Ref<Wasm::WasmBuiltinCallee>>& builtinCallees() {
+        return m_builtinCallees;
+    }
+
 private:
     JSWebAssemblyInstance(VM&, Structure*, JSWebAssemblyModule*, WebAssemblyModuleRecord*);
     ~JSWebAssemblyInstance();
@@ -328,6 +332,7 @@ private:
     BitVector m_passiveDataSegments;
     FixedVector<RefPtr<const Wasm::Tag>> m_tags;
     Vector<Ref<Wasm::WasmToJSCallee>> importCallees;
+    Vector<Ref<Wasm::WasmBuiltinCallee>> m_builtinCallees;
     void* m_faultPC { nullptr };
 };
 

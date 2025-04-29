@@ -138,12 +138,14 @@ static void initializeBuiltinImport(VM& vm, WriteBarrier<JSWebAssemblyInstance>&
     auto* info = instance->importFunctionInfo(import.kindIndex);
     info->importFunctionStub = builtin->implementation();
     info->entrypointLoadLocation = &info->importFunctionStub;
-    info->boxedWasmCalleeLoadLocation = &Wasm::NullWasmCallee; // FIXME(vb): provide a more informative callee
-    info->targetInstance.set(vm, instance.get(), instance.get()); // FIXME(vb): what is the right owner?
+    info->targetInstance.set(vm, instance.get(), instance.get()); // FIXME(vb): what is the right owner to use here?
     info->typeIndex = instance->moduleInformation().importFunctionTypeIndices[import.kindIndex];
 
-    // FIXME(vb): a horrible hack to see if the overall idea works
-    info->boxedCallee = reinterpret_cast<EncodedJSValue>(builtin);
+    auto& callees = instance->builtinCallees();
+    callees.append(adoptRef(*new Wasm::WasmBuiltinCallee(builtin, Wasm::FunctionSpaceIndex(import.kindIndex), { nullptr, nullptr }))); // FIXME(vb): can we do better than the two nulls here?
+    auto* callee = callees.last().ptr();
+    info->boxedCallee = CalleeBits::encodeNativeCallee(callee);
+    info->boxedWasmCalleeLoadLocation = &info->boxedCallee;
 }
 
 /**
@@ -183,7 +185,7 @@ void WebAssemblyModuleRecord::initializeImports(JSGlobalObject* globalObject, JS
         const WebAssemblyBuiltinSet* builtinSet = findEnabledBuiltinSet(moduleName.string().string(), moduleInformation);
         if (builtinSet) {
             String fieldName = makeString(import.field);
-            const WebAssemblyBuiltin* builtin = builtinSet->findBuiltin(fieldName);
+            auto* builtin = builtinSet->findBuiltin(fieldName);
             if (!builtin) {
                 return exception(createTypeError(globalObject, importFailMessage(import, "import"_s, "is not a valid builtin reference"_s)));
             }
@@ -560,16 +562,14 @@ void WebAssemblyModuleRecord::initializeExports(JSGlobalObject* globalObject)
         if (functionIndexSpace < functionImportCount) {
             JSObject* functionImport = m_instance->importFunction(functionIndexSpace).get();
             if (!functionImport) {
-
-                // FIXME(vb): get rid of the horrible hack of smuggling the builtin pointer as the boxedCallee
-                // It appears to work without wrapping - maybe the wrapping in this case is unnecessary
-                // because our functions never use `this`?
-
-                auto* importInfo = m_instance->importFunctionInfo(functionIndexSpace);
-                WebAssemblyBuiltin* builtin = reinterpret_cast<WebAssemblyBuiltin*>(importInfo->boxedCallee);
-                JSObject* jsFunction = builtin->reexportRepresentative(globalObject);
-                wrapper = jsFunction;
-
+                // No function import means the import is a wasm builtin.
+                // The boxed callee in callLinkInfo is a WasmBuiltinCallee with a pointer to the builtin.
+                auto* callLinkInfo = m_instance->importFunctionInfo(functionIndexSpace);
+                // FIXME(vb): is there a more gentle way of extracting the callee pointer from boxedCallee than the below?
+                auto calleeBits = std::bit_cast<CalleeBits>(callLinkInfo->boxedCallee);
+                auto* callee = std::bit_cast<Wasm::WasmBuiltinCallee*>(calleeBits.asNativeCallee());
+                const WebAssemblyBuiltin* builtin = callee->builtin();
+                wrapper = builtin->reExportRepresentative(globalObject);
             } else if (isWebAssemblyHostFunction(functionImport))
                 wrapper = functionImport;
             else {

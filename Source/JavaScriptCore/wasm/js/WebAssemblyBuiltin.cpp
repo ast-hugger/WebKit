@@ -31,13 +31,11 @@
 #include "wtf/text/MakeString.h"
 
 #define GET_CALL_FRAME() std::bit_cast<CallFrame*>(__builtin_frame_address(0))
-#define FETCH_WASM_INSTANCE(callFrame) std::bit_cast<JSWebAssemblyInstance*>((callFrame)->codeBlock())
-// FIXME(vb): use _callFrame->wasmInstance() in the macro below, but it's only possible when we have a proper callee which 'isNativeCallee()'
-#define BUILTIN_PROLOGUE(_vm, _globalObject) \
+#define BUILTIN_PROLOGUE(vm, globalObject) \
     CallFrame* _callFrame = GET_CALL_FRAME(); \
-    JSWebAssemblyInstance* _wasmInstance = FETCH_WASM_INSTANCE(_callFrame); \
-    VM& _vm = _wasmInstance->vm(); \
-    JSGlobalObject* _globalObject = _wasmInstance->globalObject();
+    JSWebAssemblyInstance* _wasmInstance = _callFrame->wasmInstance(); \
+    VM& vm = _wasmInstance->vm(); \
+    JSGlobalObject* globalObject = _wasmInstance->globalObject();
 
 #define IMPLEMENTATION_POINTER(function) reinterpret_cast<WebAssemblyBuiltin::ImplementationPtr>(reinterpret_cast<void*>(function))
 
@@ -51,9 +49,44 @@
     static int32_t SYSV_ABI name(__VA_ARGS__) REFERENCED_FROM_ASM WTF_INTERNAL; \
     int32_t SYSV_ABI name(__VA_ARGS__)
 
+#define DEFINE_BUILTIN_ENTRY_R_RR(name, impl) \
+    DEFINE_WASM_BUILTIN(name, EncodedJSValue arg0, EncodedJSValue arg1) \
+    { \
+        BUILTIN_PROLOGUE(vm, globalObject); \
+        JSValue left = JSValue::decode(arg0); \
+        JSValue right = JSValue::decode(arg1); \
+        return JSValue::encode(impl(vm, globalObject, left, right)); \
+    }
+
+#define DEFINE_BUILTIN_JS_ENTRY_R_RR(name, impl) \
+    static JSC_DECLARE_HOST_FUNCTION(name); \
+    JSC_DEFINE_HOST_FUNCTION(name, (JSGlobalObject* globalObject, CallFrame* callFrame)) \
+    { \
+        JSValue left = callFrame->argument(0); \
+        JSValue right = callFrame->argument(1); \
+        return JSValue::encode(impl(globalObject->vm(), globalObject, left, right)); \
+    }
+
+#define DEFINE_BUILTIN_ENTRY_R_R(name, impl) \
+    DEFINE_WASM_BUILTIN(name, EncodedJSValue arg) \
+    { \
+        BUILTIN_PROLOGUE(vm, globalObject); \
+        JSValue value = JSValue::decode(arg); \
+        return JSValue::encode(impl(vm, globalObject, value)); \
+    }
+
+#define DEFINE_BUILTIN_JS_ENTRY_R_R(name, impl) \
+    static JSC_DECLARE_HOST_FUNCTION(name); \
+    JSC_DEFINE_HOST_FUNCTION(name, (JSGlobalObject* globalObject, CallFrame* callFrame)) \
+    { \
+        JSValue value = callFrame->argument(0); \
+        return JSValue::encode(impl(globalObject->vm(), globalObject, value)); \
+    }
+
+
 namespace JSC {
 
-JSObject* WebAssemblyBuiltin::reexportRepresentative(JSGlobalObject* globalObject) const
+JSObject* WebAssemblyBuiltin::reExportRepresentative(JSGlobalObject* globalObject) const
 {
     return JSFunction::create(globalObject->vm(), globalObject, 0, m_name, m_reexportImplementation, ImplementationVisibility::Public, JSC::NoIntrinsic);
 }
@@ -92,19 +125,20 @@ DEFINE_WASM_BUILTIN(jsString_hello)
  *
  * Summary: if the arg is a string, return it, otherwise throw a RuntimeError.
  */
-DEFINE_WASM_BUILTIN(jsString_cast, EncodedJSValue arg)
+static ALWAYS_INLINE JSValue doCast(VM& vm, JSGlobalObject* globalObject, JSValue value)
 {
-    BUILTIN_PROLOGUE(vm, globalObject);
     auto scope = DECLARE_THROW_SCOPE(vm);
 
-    JSValue value = JSValue::decode(arg);
     if (!value.isString()) {
         JSObject* error = createJSWebAssemblyRuntimeError(globalObject, vm, "the value is not a string"_s);
-        return throwVMError(globalObject, scope, error);
+        return throwException(globalObject, scope, error);
     }
 
-    RELEASE_AND_RETURN(scope, arg);
+    RELEASE_AND_RETURN(scope, value);
 }
+
+DEFINE_BUILTIN_ENTRY_R_R(jsString_cast, doCast)
+DEFINE_BUILTIN_JS_ENTRY_R_R(jsString_castJS, doCast)
 
 /**
  * See https://webassembly.github.io/js-string-builtins/js-api/#js-string-test
@@ -117,6 +151,15 @@ DEFINE_WASM_BUILTIN_I32(jsString_test, EncodedJSValue arg)
     return value.isString() ? 1 : 0;
 }
 
+JSC_DECLARE_HOST_FUNCTION(jsString_testJS);
+JSC_DEFINE_HOST_FUNCTION(jsString_testJS, (JSGlobalObject* globalObject, CallFrame* callFrame))
+{
+    UNUSED_PARAM(globalObject);
+    JSValue value = callFrame->argument(0);
+    JSValue result = value.isString() ? JSValue(1) : JSValue(0);
+    return JSValue::encode(result);
+}
+
 /**
  * See https://webassembly.github.io/js-string-builtins/js-api/#js-string-concat
  *
@@ -124,42 +167,21 @@ DEFINE_WASM_BUILTIN_I32(jsString_test, EncodedJSValue arg)
  * Otherwise, throw a RuntimeError.
  */
 
-static ALWAYS_INLINE EncodedJSValue doConcat(VM& vm, JSGlobalObject* globalObject, JSValue left, JSValue right)
+static ALWAYS_INLINE JSValue doConcat(VM& vm, JSGlobalObject* globalObject, JSValue left, JSValue right)
 {
     auto scope = DECLARE_THROW_SCOPE(vm);
 
     if (!left.isString() || !right.isString()) {
         JSObject* error = createJSWebAssemblyRuntimeError(globalObject, vm, "invalid concat() arguments: both must be strings"_s);
-        return throwVMError(globalObject, scope, error);
+        return throwException(globalObject, scope, error);
     }
 
     JSString* result = jsString(globalObject, asString(left), asString(right)); // creates a rope string
-    RELEASE_AND_RETURN(scope, JSValue::encode(result));
+    RELEASE_AND_RETURN(scope, result);
 }
 
-static JSC_DECLARE_HOST_FUNCTION(jsStringConcatForJS);
-JSC_DEFINE_HOST_FUNCTION(jsStringConcatForJS, (JSGlobalObject* globalObject, CallFrame* callFrame))
-{
-    JSValue left = callFrame->argument(0);
-    JSValue right = callFrame->argument(1);
-    return doConcat(globalObject->vm(), globalObject, left, right);
-}
-
-DEFINE_WASM_BUILTIN(jsString_concat, EncodedJSValue arg0, EncodedJSValue arg1)
-{
-    BUILTIN_PROLOGUE(vm, globalObject);
-    JSValue left = JSValue::decode(arg0);
-    JSValue right = JSValue::decode(arg1);
-    return doConcat(vm, globalObject, left, right);
-}
-
-#define BUILTIN(name, resultTypes, argTypes, nativeImpl, jsImpl) \
-    WebAssemblyBuiltin( \
-        ASCIILiteral(name), Wasm::TypeInformation::typeDefinitionForFunction( \
-            resultTypes, \
-            argTypes), \
-    IMPLEMENTATION_POINTER(nativeImpl), \
-    jsImpl)
+DEFINE_BUILTIN_ENTRY_R_RR(jsString_concat, doConcat)
+DEFINE_BUILTIN_JS_ENTRY_R_RR(jsString_concatJS, doConcat)
 
 WebAssemblyBuiltinSet WebAssemblyBuiltinSet::jsString()
 {
@@ -178,7 +200,7 @@ WebAssemblyBuiltinSet WebAssemblyBuiltinSet::jsString()
             { Wasm::externrefType() },
             { Wasm::externrefType() }),
         IMPLEMENTATION_POINTER(jsString_cast),
-        nullptr
+        jsString_castJS
     ));
     builtinSet.add(WebAssemblyBuiltin(
         ASCIILiteral("test"),
@@ -186,7 +208,7 @@ WebAssemblyBuiltinSet WebAssemblyBuiltinSet::jsString()
             { Wasm::Types::I32 },
             { Wasm::externrefType() }),
         IMPLEMENTATION_POINTER(jsString_test),
-        nullptr
+        jsString_testJS
     ));
     builtinSet.add(WebAssemblyBuiltin(
         ASCIILiteral("concat"),
@@ -194,7 +216,7 @@ WebAssemblyBuiltinSet WebAssemblyBuiltinSet::jsString()
             { Wasm::externrefType() },
             { Wasm::externrefType(), Wasm::externrefType() }),
         IMPLEMENTATION_POINTER(jsString_concat),
-        jsStringConcatForJS
+        jsString_concatJS
     ));
     return builtinSet;
 }
