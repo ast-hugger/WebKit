@@ -576,12 +576,18 @@ private:
 using LLIntCallees = ThreadSafeRefCountedFixedVector<Ref<LLIntCallee>>;
 using IPIntCallees = ThreadSafeRefCountedFixedVector<Ref<IPIntCallee>>;
 
+class WebAssemblyBuiltin;
+
 class WasmBuiltinCallee final : public Callee {
-    // WTF_MAKE_COMPACT_TZONE_ALLOCATED(IntrinsicCallee);
+    WTF_MAKE_COMPACT_TZONE_ALLOCATED(WasmBuiltinCallee);
     friend class Callee;
 
 public:
     WasmBuiltinCallee(FunctionSpaceIndex, std::pair<const Name*, RefPtr<NameSection>>&&);
+
+    const WebAssemblyBuiltin* builtin() {
+        return m_builtin;
+    }
 
 protected:
     CodePtr<WasmEntryPtrTag> entrypointImpl() const { return { }; }
@@ -589,7 +595,7 @@ protected:
     RegisterAtOffsetList* calleeSaveRegistersImpl() { return nullptr; }
 
 private:
-    // WasmBuiltin* m_builtin;
+    const WebAssemblyBuiltin* m_builtin;
 };
 
 } } // namespace JSC::Wasm

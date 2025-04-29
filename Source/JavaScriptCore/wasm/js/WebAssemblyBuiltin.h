@@ -42,14 +42,14 @@ class WebAssemblyBuiltin {
 public:
     using ImplementationPtr = EncodedJSValue (*)();
 
-    WebAssemblyBuiltin(ASCIILiteral name, RefPtr<Wasm::TypeDefinition> type, ImplementationPtr implementation)
+    WebAssemblyBuiltin(ASCIILiteral name, RefPtr<Wasm::TypeDefinition> type, ImplementationPtr implementation, NativeFunction implementationForReexports)
         : m_name(name)
         , m_type(type)
         , m_implementation(implementation)
+        , m_reexportImplementation(implementationForReexports)
     {
     }
     WebAssemblyBuiltin(WebAssemblyBuiltin&&) = default;
-    // ~WebAssemblyBuiltin() = default;
 
     const ASCIILiteral& name() const
     {
@@ -63,11 +63,15 @@ public:
     {
         return m_implementation;
     }
+    // Create a JSFunction with the same behavior as the builtin, to be used when
+    // this builtin is reexported.
+    JSObject* reexportRepresentative(JSGlobalObject*) const;
 
 private:
     ASCIILiteral m_name;
     RefPtr<Wasm::TypeDefinition> m_type;
     ImplementationPtr m_implementation;
+    NativeFunction m_reexportImplementation;
 };
 
 /**

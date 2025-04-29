@@ -141,6 +141,9 @@ static void initializeBuiltinImport(VM& vm, WriteBarrier<JSWebAssemblyInstance>&
     info->boxedWasmCalleeLoadLocation = &Wasm::NullWasmCallee; // FIXME(vb): provide a more informative callee
     info->targetInstance.set(vm, instance.get(), instance.get()); // FIXME(vb): what is the right owner?
     info->typeIndex = instance->moduleInformation().importFunctionTypeIndices[import.kindIndex];
+
+    // FIXME(vb): a horrible hack to see if the overall idea works
+    info->boxedCallee = reinterpret_cast<EncodedJSValue>(builtin);
 }
 
 /**
@@ -504,6 +507,8 @@ void WebAssemblyModuleRecord::initializeImports(JSGlobalObject* globalObject, JS
     }
 }
 
+JSObject* createConcatBuiltinConterpart(JSGlobalObject* globalObject);
+
 // https://webassembly.github.io/spec/js-api/#create-an-exports-object
 void WebAssemblyModuleRecord::initializeExports(JSGlobalObject* globalObject)
 {
@@ -554,7 +559,18 @@ void WebAssemblyModuleRecord::initializeExports(JSGlobalObject* globalObject)
         //   ii. (Note: At most one wrapper is created for any closure, so func is unique, even if there are multiple occurrances in the list. Moreover, if the item was an import that is already an Exported Function Exotic Object, then the original function object will be found. For imports that are regular JS functions, a new wrapper will be created.)
         if (functionIndexSpace < functionImportCount) {
             JSObject* functionImport = m_instance->importFunction(functionIndexSpace).get();
-            if (isWebAssemblyHostFunction(functionImport))
+            if (!functionImport) {
+
+                // FIXME(vb): get rid of the horrible hack of smuggling the builtin pointer as the boxedCallee
+                // It appears to work without wrapping - maybe the wrapping in this case is unnecessary
+                // because our functions never use `this`?
+
+                auto* importInfo = m_instance->importFunctionInfo(functionIndexSpace);
+                WebAssemblyBuiltin* builtin = reinterpret_cast<WebAssemblyBuiltin*>(importInfo->boxedCallee);
+                JSObject* jsFunction = builtin->reexportRepresentative(globalObject);
+                wrapper = jsFunction;
+
+            } else if (isWebAssemblyHostFunction(functionImport))
                 wrapper = functionImport;
             else {
                 Wasm::TypeIndex typeIndex = module->typeIndexFromFunctionIndexSpace(functionIndexSpace);

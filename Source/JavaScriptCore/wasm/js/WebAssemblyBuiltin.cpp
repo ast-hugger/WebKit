@@ -43,15 +43,20 @@
 
 /// Define a Wasm builtin returning an externref.
 #define DEFINE_WASM_BUILTIN(name, ...) \
-    extern "C" EncodedJSValue SYSV_ABI name(__VA_ARGS__) REFERENCED_FROM_ASM WTF_INTERNAL; \
-    extern "C" EncodedJSValue SYSV_ABI name(__VA_ARGS__)
+    static EncodedJSValue SYSV_ABI name(__VA_ARGS__) REFERENCED_FROM_ASM WTF_INTERNAL; \
+    EncodedJSValue SYSV_ABI name(__VA_ARGS__)
 
 /// Define a Wasm builtin returning an int32.
 #define DEFINE_WASM_BUILTIN_I32(name, ...) \
-    extern "C" int32_t SYSV_ABI name(__VA_ARGS__) REFERENCED_FROM_ASM WTF_INTERNAL; \
-    extern "C" int32_t SYSV_ABI name(__VA_ARGS__)
+    static int32_t SYSV_ABI name(__VA_ARGS__) REFERENCED_FROM_ASM WTF_INTERNAL; \
+    int32_t SYSV_ABI name(__VA_ARGS__)
 
 namespace JSC {
+
+JSObject* WebAssemblyBuiltin::reexportRepresentative(JSGlobalObject* globalObject) const
+{
+    return JSFunction::create(globalObject->vm(), globalObject, 0, m_name, m_reexportImplementation, ImplementationVisibility::Public, JSC::NoIntrinsic);
+}
 
 const WebAssemblyBuiltin* WebAssemblyBuiltinSet::findBuiltin(const String& name) const
 {
@@ -118,13 +123,11 @@ DEFINE_WASM_BUILTIN_I32(jsString_test, EncodedJSValue arg)
  * Summary: if both values are strings, return the result of concatenating them.
  * Otherwise, throw a RuntimeError.
  */
-DEFINE_WASM_BUILTIN(jsString_concat, EncodedJSValue arg0, EncodedJSValue arg1)
+
+static ALWAYS_INLINE EncodedJSValue doConcat(VM& vm, JSGlobalObject* globalObject, JSValue left, JSValue right)
 {
-    BUILTIN_PROLOGUE(vm, globalObject);
     auto scope = DECLARE_THROW_SCOPE(vm);
 
-    JSValue left = JSValue::decode(arg0);
-    JSValue right = JSValue::decode(arg1);
     if (!left.isString() || !right.isString()) {
         JSObject* error = createJSWebAssemblyRuntimeError(globalObject, vm, "invalid concat() arguments: both must be strings"_s);
         return throwVMError(globalObject, scope, error);
@@ -134,6 +137,30 @@ DEFINE_WASM_BUILTIN(jsString_concat, EncodedJSValue arg0, EncodedJSValue arg1)
     RELEASE_AND_RETURN(scope, JSValue::encode(result));
 }
 
+static JSC_DECLARE_HOST_FUNCTION(jsStringConcatForJS);
+JSC_DEFINE_HOST_FUNCTION(jsStringConcatForJS, (JSGlobalObject* globalObject, CallFrame* callFrame))
+{
+    JSValue left = callFrame->argument(0);
+    JSValue right = callFrame->argument(1);
+    return doConcat(globalObject->vm(), globalObject, left, right);
+}
+
+DEFINE_WASM_BUILTIN(jsString_concat, EncodedJSValue arg0, EncodedJSValue arg1)
+{
+    BUILTIN_PROLOGUE(vm, globalObject);
+    JSValue left = JSValue::decode(arg0);
+    JSValue right = JSValue::decode(arg1);
+    return doConcat(vm, globalObject, left, right);
+}
+
+#define BUILTIN(name, resultTypes, argTypes, nativeImpl, jsImpl) \
+    WebAssemblyBuiltin( \
+        ASCIILiteral(name), Wasm::TypeInformation::typeDefinitionForFunction( \
+            resultTypes, \
+            argTypes), \
+    IMPLEMENTATION_POINTER(nativeImpl), \
+    jsImpl)
+
 WebAssemblyBuiltinSet WebAssemblyBuiltinSet::jsString()
 {
     WebAssemblyBuiltinSet builtinSet = WebAssemblyBuiltinSet("wasm:js-string");
@@ -142,28 +169,32 @@ WebAssemblyBuiltinSet WebAssemblyBuiltinSet::jsString()
         Wasm::TypeInformation::typeDefinitionForFunction(
             { Wasm::externrefType() },
             { }),
-        IMPLEMENTATION_POINTER(jsString_hello)
+        IMPLEMENTATION_POINTER(jsString_hello),
+        nullptr
     ));
     builtinSet.add(WebAssemblyBuiltin(
         ASCIILiteral("cast"),
         Wasm::TypeInformation::typeDefinitionForFunction(
             { Wasm::externrefType() },
             { Wasm::externrefType() }),
-        IMPLEMENTATION_POINTER(jsString_cast)
+        IMPLEMENTATION_POINTER(jsString_cast),
+        nullptr
     ));
     builtinSet.add(WebAssemblyBuiltin(
         ASCIILiteral("test"),
         Wasm::TypeInformation::typeDefinitionForFunction(
             { Wasm::Types::I32 },
             { Wasm::externrefType() }),
-        IMPLEMENTATION_POINTER(jsString_test)
+        IMPLEMENTATION_POINTER(jsString_test),
+        nullptr
     ));
     builtinSet.add(WebAssemblyBuiltin(
         ASCIILiteral("concat"),
         Wasm::TypeInformation::typeDefinitionForFunction(
             { Wasm::externrefType() },
             { Wasm::externrefType(), Wasm::externrefType() }),
-        IMPLEMENTATION_POINTER(jsString_concat)
+        IMPLEMENTATION_POINTER(jsString_concat),
+        jsStringConcatForJS
     ));
     return builtinSet;
 }
