@@ -25,6 +25,7 @@
 
  #if ENABLE(WEBASSEMBLY)
 
+#include "JITExceptions.h"
 #include "JSWebAssemblyRuntimeError.h"
 #include "WebAssemblyBuiltin.h"
 
@@ -38,6 +39,20 @@
     JSGlobalObject* globalObject = _wasmInstance->globalObject();
 
 #define IMPLEMENTATION_POINTER(function) reinterpret_cast<WebAssemblyBuiltin::ImplementationPtr>(reinterpret_cast<void*>(function))
+
+// FIXME(vb): this is not a jump, and is there a less hacky strategy to begin with?
+// #define JMP(target) ((void (*)()) (target))()
+// #define JMP(target) asm volatile("br %0" : : "r"(target))
+// #define JMP(target) \
+//     do { \
+//         auto ptr = std::bit_cast<CodePtr<ExceptionHandlerPtrTag>>(target); \
+//         auto untagged = ptr.retaggedPtr<CFunctionPtrTag>(); \
+//         asm volatile("br %0" : : "r"(untagged)); \
+//     } while(false);
+#define JMP(target) do { \
+    printf("no idea how to jump to %p\n", (target)); \
+    abort(); \
+} while(false)
 
 /// Define a Wasm builtin returning an externref.
 #define DEFINE_WASM_BUILTIN(name, ...) \
@@ -72,8 +87,25 @@
     { \
         BUILTIN_PROLOGUE(vm, globalObject); \
         JSValue value = JSValue::decode(arg); \
-        return JSValue::encode(impl(vm, globalObject, value)); \
+        JSValue result = impl(vm, globalObject, value); \
+        if (UNLIKELY(vm.traps().maybeNeedHandling())) { \
+            if (vm.hasExceptionsAfterHandlingTraps()) { \
+                genericUnwind(vm, _callFrame); \
+                void* target = vm.targetMachinePCForThrow; \
+                JMP(target); \
+            } \
+        } \
+        return JSValue::encode(result); \
     }
+
+    /*
+        if (vm.hasExceptionsAfterHandlingTraps()) { \
+            genericUnwind(vm, _callFrame); \
+            void* target = vm.targetMachinePCForThrow; \
+            JMP(target); \
+        } \
+    */
+
 
 #define DEFINE_BUILTIN_JS_ENTRY_R_R(name, impl) \
     static JSC_DECLARE_HOST_FUNCTION(name); \
@@ -112,7 +144,7 @@ void WebAssemblyBuiltinSet::add(WebAssemblyBuiltin&& builtin)
 /**
  * A scratch builtin for trying things out, not part of the spec.
  */
-DEFINE_WASM_BUILTIN(jsString_hello)
+DEFINE_WASM_BUILTIN(jsStringHello)
 {
     BUILTIN_PROLOGUE(vm, globalObject);
     UNUSED_PARAM(globalObject);
@@ -137,22 +169,22 @@ static ALWAYS_INLINE JSValue doCast(VM& vm, JSGlobalObject* globalObject, JSValu
     RELEASE_AND_RETURN(scope, value);
 }
 
-DEFINE_BUILTIN_ENTRY_R_R(jsString_cast, doCast)
-DEFINE_BUILTIN_JS_ENTRY_R_R(jsString_castJS, doCast)
+DEFINE_BUILTIN_ENTRY_R_R(jsStringCast, doCast)
+DEFINE_BUILTIN_JS_ENTRY_R_R(jsStringCastJS, doCast)
 
 /**
  * See https://webassembly.github.io/js-string-builtins/js-api/#js-string-test
  *
  * Summary: return 1 if the arg is a string, 0 otherwise.
  */
-DEFINE_WASM_BUILTIN_I32(jsString_test, EncodedJSValue arg)
+DEFINE_WASM_BUILTIN_I32(jsStringTest, EncodedJSValue arg)
 {
     JSValue value = JSValue::decode(arg);
     return value.isString() ? 1 : 0;
 }
 
-JSC_DECLARE_HOST_FUNCTION(jsString_testJS);
-JSC_DEFINE_HOST_FUNCTION(jsString_testJS, (JSGlobalObject* globalObject, CallFrame* callFrame))
+JSC_DECLARE_HOST_FUNCTION(jsStringTestJS);
+JSC_DEFINE_HOST_FUNCTION(jsStringTestJS, (JSGlobalObject* globalObject, CallFrame* callFrame))
 {
     UNUSED_PARAM(globalObject);
     JSValue value = callFrame->argument(0);
@@ -180,8 +212,8 @@ static ALWAYS_INLINE JSValue doConcat(VM& vm, JSGlobalObject* globalObject, JSVa
     RELEASE_AND_RETURN(scope, result);
 }
 
-DEFINE_BUILTIN_ENTRY_R_RR(jsString_concat, doConcat)
-DEFINE_BUILTIN_JS_ENTRY_R_RR(jsString_concatJS, doConcat)
+DEFINE_BUILTIN_ENTRY_R_RR(jsStringConcat, doConcat)
+DEFINE_BUILTIN_JS_ENTRY_R_RR(jsStringConcatJS, doConcat)
 
 WebAssemblyBuiltinSet WebAssemblyBuiltinSet::jsString()
 {
@@ -191,7 +223,7 @@ WebAssemblyBuiltinSet WebAssemblyBuiltinSet::jsString()
         Wasm::TypeInformation::typeDefinitionForFunction(
             { Wasm::externrefType() },
             { }),
-        IMPLEMENTATION_POINTER(jsString_hello),
+        IMPLEMENTATION_POINTER(jsStringHello),
         nullptr
     ));
     builtinSet.add(WebAssemblyBuiltin(
@@ -199,24 +231,24 @@ WebAssemblyBuiltinSet WebAssemblyBuiltinSet::jsString()
         Wasm::TypeInformation::typeDefinitionForFunction(
             { Wasm::externrefType() },
             { Wasm::externrefType() }),
-        IMPLEMENTATION_POINTER(jsString_cast),
-        jsString_castJS
+        IMPLEMENTATION_POINTER(jsStringCast),
+        jsStringCastJS
     ));
     builtinSet.add(WebAssemblyBuiltin(
         ASCIILiteral("test"),
         Wasm::TypeInformation::typeDefinitionForFunction(
             { Wasm::Types::I32 },
             { Wasm::externrefType() }),
-        IMPLEMENTATION_POINTER(jsString_test),
-        jsString_testJS
+        IMPLEMENTATION_POINTER(jsStringTest),
+        jsStringTestJS
     ));
     builtinSet.add(WebAssemblyBuiltin(
         ASCIILiteral("concat"),
         Wasm::TypeInformation::typeDefinitionForFunction(
             { Wasm::externrefType() },
             { Wasm::externrefType(), Wasm::externrefType() }),
-        IMPLEMENTATION_POINTER(jsString_concat),
-        jsString_concatJS
+        IMPLEMENTATION_POINTER(jsStringConcat),
+        jsStringConcatJS
     ));
     return builtinSet;
 }

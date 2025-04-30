@@ -58,6 +58,7 @@ WTF_MAKE_COMPACT_TZONE_ALLOCATED_IMPL(OMGOSREntryCallee);
 WTF_MAKE_COMPACT_TZONE_ALLOCATED_IMPL(BBQCallee);
 WTF_MAKE_COMPACT_TZONE_ALLOCATED_IMPL(IPIntCallee);
 WTF_MAKE_COMPACT_TZONE_ALLOCATED_IMPL(LLIntCallee);
+WTF_MAKE_COMPACT_TZONE_ALLOCATED_IMPL(WasmBuiltinCallee);
 
 Callee::Callee(Wasm::CompilationMode compilationMode)
     : NativeCallee(NativeCallee::Category::Wasm, ImplementationVisibility::Private)

@@ -578,8 +578,7 @@ using LLIntCallees = ThreadSafeRefCountedFixedVector<Ref<LLIntCallee>>;
 using IPIntCallees = ThreadSafeRefCountedFixedVector<Ref<IPIntCallee>>;
 
 class WasmBuiltinCallee final : public Callee {
-    // FIXME(vb): why does enabling the following cause a linker error?
-    // WTF_MAKE_COMPACT_TZONE_ALLOCATED(WasmBuiltinCallee);
+    WTF_MAKE_COMPACT_TZONE_ALLOCATED(WasmBuiltinCallee);
     friend class Callee;
 public:
     WasmBuiltinCallee(const WebAssemblyBuiltin*, FunctionSpaceIndex, std::pair<const Name*, RefPtr<NameSection>>&&);
