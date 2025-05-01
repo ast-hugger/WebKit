@@ -136,16 +136,15 @@ static void defineImportedStringConstant(VM& vm, WriteBarrier<JSWebAssemblyInsta
 static void initializeBuiltinImport(VM& vm, WriteBarrier<JSWebAssemblyInstance>& instance, const Wasm::Import& import, const WebAssemblyBuiltin* builtin)
 {
     auto* info = instance->importFunctionInfo(import.kindIndex);
-    info->importFunctionStub = builtin->implementation();
+    auto& callees = instance->builtinCallees();
+    callees.append(adoptRef(*new Wasm::WasmBuiltinCallee(builtin, Wasm::FunctionSpaceIndex(import.kindIndex), { nullptr, nullptr }))); // FIXME(vb): can we do better than the two nulls here?
+    auto* callee = std::bit_cast<Wasm::WasmBuiltinCallee*>(callees.last().ptr());
+    info->boxedCallee = CalleeBits::encodeNativeCallee(callee);
+    info->boxedWasmCalleeLoadLocation = &info->boxedCallee;
+    info->importFunctionStub = callee->entrypointImpl();
     info->entrypointLoadLocation = &info->importFunctionStub;
     info->targetInstance.set(vm, instance.get(), instance.get()); // FIXME(vb): what is the right owner to use here?
     info->typeIndex = instance->moduleInformation().importFunctionTypeIndices[import.kindIndex];
-
-    auto& callees = instance->builtinCallees();
-    callees.append(adoptRef(*new Wasm::WasmBuiltinCallee(builtin, Wasm::FunctionSpaceIndex(import.kindIndex), { nullptr, nullptr }))); // FIXME(vb): can we do better than the two nulls here?
-    auto* callee = callees.last().ptr();
-    info->boxedCallee = CalleeBits::encodeNativeCallee(callee);
-    info->boxedWasmCalleeLoadLocation = &info->boxedCallee;
 }
 
 /**

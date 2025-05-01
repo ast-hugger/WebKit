@@ -46,58 +46,67 @@ async function testCast() {
         )
     )`;
     const instance = await instantiate(wat);
-    const wrapped = instance.exports.wrapper;
-    assert.eq("foobar", wrapped("foobar"));
-    assert.eq("", wrapped(""));
-    // try {
-        wrapped(42);
-    // } catch (exception) {
-    // }
-    // const exported = instance.exports.exported;
-    // assert.eq("foobar", exported("foobar"));
-    // assert.eq("", exported(""));
-    // try {
-    //     exported(42);
-    // } catch (exception) {
-    // }
+    const wrapper = instance.exports.wrapper;
+    const exported = instance.exports.exported;
+
+    assert.eq("foobar", wrapper("foobar"));
+    assert.eq("", wrapper(""));
+    assert.throwsAny(wrapper, 42);
+
+    assert.eq("foobar", exported("foobar"));
+    assert.eq("", exported(""));
+    assert.throwsAny(exported, 42);
 }
 
 async function testTest() {
     const wat = `
     (module
         (import "wasm:js-string" "test" (func $builtin (param externref) (result i32)))
-        (export "reExported" (func $builtin))
+        (export "exported" (func $builtin))
         (func (export "wrapper") (param $arg externref) (result i32)
             local.get $arg
             call $builtin
         )
     )`;
     const instance = await instantiate(wat);
-    const wrapped = instance.exports.wrapper;
-    assert.eq(1, wrapped("foobar"));
-    assert.eq(1, wrapped(""));
-    assert.eq(0, wrapped(42));
-    const reExported = instance.exports.reExported;
-    assert.eq(1, reExported("foobar"));
-    assert.eq(1, reExported(""));
-    assert.eq(0, reExported(42));
+    const wrapper = instance.exports.wrapper;
+    const exported = instance.exports.exported;
+
+    assert.eq(1, wrapper("foobar"));
+    assert.eq(1, wrapper(""));
+    assert.eq(0, wrapper(42));
+
+    assert.eq(1, exported("foobar"));
+    assert.eq(1, exported(""));
+    assert.eq(0, exported(42));
 }
 
 async function testConcat() {
     const wat = `
     (module
-        (import "wasm:js-string" "concat" (func $concatBuiltin (param externref externref) (result externref)))
-        (func (export "concatWrapper") (param $left externref) (param $right externref) (result externref)
+        (import "wasm:js-string" "concat" (func $builtin (param externref externref) (result externref)))
+        (export "exported" (func $builtin))
+        (func (export "wrapper") (param $left externref) (param $right externref) (result externref)
             local.get $left
             local.get $right
-            call $concatBuiltin
+            call $builtin
         )
     )`;
     const instance = await instantiate(wat);
-    const callConcat = instance.exports.concatWrapper;
-    assert.eq("foobar", callConcat("foo", "bar"));
-    assert.eq("foobar", callConcat("", "foobar"));
-    assert.eq("foobar", callConcat("foobar", ""));
+    const wrapper = instance.exports.wrapper;
+    const exported = instance.exports.exported;
+
+    assert.eq("foobar", wrapper("foo", "bar"));
+    assert.eq("foobar", wrapper("", "foobar"));
+    assert.eq("foobar", wrapper("foobar", ""));
+    assert.throwsAny(wrapper, "foo", 42);
+    assert.throwsAny(wrapper, 42, "foo");
+
+    assert.eq("foobar", exported("foo", "bar"));
+    assert.eq("foobar", exported("", "foobar"));
+    assert.eq("foobar", exported("foobar", ""));
+    assert.throwsAny(exported, "foo", 42);
+    assert.throwsAny(exported, 42, "foo");
 }
 
 await assert.asyncTest(testInstantiation());

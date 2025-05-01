@@ -40,6 +40,8 @@
 #include "WasmCallingConvention.h"
 #include "WasmModuleInformation.h"
 
+#include "js/WebAssemblyBuiltin.h"
+
 #include <wtf/TZoneMallocInlines.h>
 #include <wtf/text/MakeString.h>
 
@@ -592,6 +594,9 @@ WasmBuiltinCallee::WasmBuiltinCallee(const WebAssemblyBuiltin* builtin, Function
     : Callee(Wasm::CompilationMode::IPIntMode, index, WTFMove(name)) // FIXME(vb): just using whatever mode feels okay, what's the right mode here?
     , m_builtin(builtin)
 {
+    void* cFunctionPtr = std::bit_cast<void*>(m_builtin->implementation());
+    m_nativeFunction = CodePtr<CFunctionPtrTag>::fromTaggedPtr(cFunctionPtr).retagged<WasmEntryPtrTag>();
+    m_trampoline = CodePtr<CFunctionPtrTag>(LLInt::getCodeFunctionPtr<CFunctionPtrTag>(ipint_host_function_call_trampoline)).retagged<WasmEntryPtrTag>();
 }
 
 } // namespace JSC::Wasm

@@ -580,17 +580,20 @@ using IPIntCallees = ThreadSafeRefCountedFixedVector<Ref<IPIntCallee>>;
 class WasmBuiltinCallee final : public Callee {
     WTF_MAKE_COMPACT_TZONE_ALLOCATED(WasmBuiltinCallee);
     friend class Callee;
+    friend class JSC::LLIntOffsetsExtractor;
 public:
     WasmBuiltinCallee(const WebAssemblyBuiltin*, FunctionSpaceIndex, std::pair<const Name*, RefPtr<NameSection>>&&);
 
     const WebAssemblyBuiltin* builtin() { return m_builtin; }
+    CodePtr<WasmEntryPtrTag> entrypointImpl() const { return m_trampoline; }
 
 protected:
-    CodePtr<WasmEntryPtrTag> entrypointImpl() const { return { }; }
     std::tuple<void*, void*> rangeImpl() const { return { nullptr, nullptr }; }
     RegisterAtOffsetList* calleeSaveRegistersImpl() { return nullptr; }
 
 private:
+    CodePtr<WasmEntryPtrTag> m_trampoline;
+    CodePtr<WasmEntryPtrTag> m_nativeFunction;
     const WebAssemblyBuiltin* m_builtin;
 };
 

@@ -787,6 +787,38 @@ op(ipint_trampoline, macro ()
     jmp _ipint_entry
 end)
 
+op(ipint_host_function_call_trampoline, macro()
+    functionPrologue()
+    getIPIntCallee() # into ws0 and UnboxedWasmCalleeStackSlot[cfr]
+#    move ws0, ws3 # a copy for debugging
+    loadp Wasm::WasmBuiltinCallee::m_nativeFunction[ws0], ws0
+
+if ARM64E
+    leap _g_config, ws1
+    jmp JSCConfigGateMapOffset + (constexpr Gate::wasm_ipint_host_function_call) * PtrSize[ws1], NativeToJITGatePtrTag # WasmEntryPtrTag
+end
+
+_wasm_trampoline_wasm_ipint_host_function_call:
+_wasm_trampoline_wasm_ipint_host_function_call_wide16:
+_wasm_trampoline_wasm_ipint_host_function_call_wide32:
+    call ws0, WasmEntryPtrTag
+
+_wasm_ipint_host_function_call_return_location:
+_wasm_ipint_host_function_call_return_location_wide16:
+_wasm_ipint_host_function_call_return_location_wide32:
+    loadp JSWebAssemblyInstance::m_vm[wasmInstance], t3
+    btpnz VM::m_exception[t3], .handleException
+
+    functionEpilogue()
+    ret
+
+.handleException:
+    storep cfr, VM::topCallFrame[t3]
+    # For now this only supports the string builting proposal, and per the proposal
+    # all exceptions thrown are runtime errors, caused by an illegal argument.
+    throwException(IllegalArgument)
+end)
+
 #################################
 # 5. Instruction implementation #
 #################################

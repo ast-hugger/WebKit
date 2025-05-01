@@ -131,6 +131,15 @@ const _throws = (func, type, message, ...args) => {
     _fail(`Expected to throw a ${type.name} with message "${message}"`);
 };
 
+const _throwsAny = (func, ...args) => {
+    try {
+        func(...args);
+    } catch (e) {
+        return;
+    }
+    _fail(`Expected to throw any exception"`);
+};
+
 const _throwsExactly = (func, error, ...args) => {
     try {
         func(...args);
@@ -172,6 +181,7 @@ const _instanceof = (obj, type, msg) => {
 // Use underscore names to avoid clashing with builtin names.
 export {
     _throws as throws,
+    _throwsAny as throwsAny,
     _throwsExactly as throwsExactly,
     _instanceof as instanceof,
 };

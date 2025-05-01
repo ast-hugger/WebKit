@@ -71,7 +71,7 @@ void IndexOrName::dump(PrintStream& out) const
 
 String makeString(const IndexOrName& ion)
 {
-    if (ion.isEmpty())
+    if (ion.isEmpty() || !ion.nameSection())
         return "wasm-stub"_s;
     auto moduleName = ion.nameSection()->moduleName.size() ? ion.nameSection()->moduleName.span() : ion.nameSection()->moduleHash.span();
     if (ion.isIndex())

@@ -41,6 +41,7 @@ namespace JSC {
 class WebAssemblyBuiltin {
 public:
     using ImplementationPtr = EncodedJSValue (*)();
+    friend class LLIntOffsetsExtractor;
 
     WebAssemblyBuiltin(ASCIILiteral name, RefPtr<Wasm::TypeDefinition> type, ImplementationPtr implementation, NativeFunction implementationForReexports)
         : m_name(name)
