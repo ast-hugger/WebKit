@@ -806,14 +806,14 @@ _wasm_trampoline_wasm_ipint_host_function_call_wide32:
 _wasm_ipint_host_function_call_return_location:
 _wasm_ipint_host_function_call_return_location_wide16:
 _wasm_ipint_host_function_call_return_location_wide32:
-    loadp JSWebAssemblyInstance::m_vm[wasmInstance], t3
-    btpnz VM::m_exception[t3], .handleException
+    loadp JSWebAssemblyInstance::m_vm[wasmInstance], ws0
+    btpnz VM::m_exception[ws0], .handleException
 
     functionEpilogue()
     ret
 
 .handleException:
-    storep cfr, VM::topCallFrame[t3]
+    storep cfr, VM::topCallFrame[ws0]
     # For now this only supports the string builting proposal, and per the proposal
     # all exceptions thrown are runtime errors, caused by an illegal argument.
     throwException(IllegalArgument)

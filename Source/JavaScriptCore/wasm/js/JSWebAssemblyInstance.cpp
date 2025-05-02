@@ -235,7 +235,7 @@ void JSWebAssemblyInstance::finalizeCreation(VM& vm, JSGlobalObject* globalObjec
             // the import is a JS function
             info->importFunctionStub = module().importFunctionStub(functionSpaceIndex);
             importCallees.append(adoptRef(*new WasmToJSCallee(functionSpaceIndex, { nullptr, nullptr })));
-            ASSERT(*info->boxedWasmCalleeLoadLocation == CalleeBits::encodeNullCallee());
+            ASSERT(*info->boxedWasmCalleeLoadLocation == CalleeBits::nullCallee());
             info->boxedCallee = CalleeBits::encodeNativeCallee(importCallees.last().ptr());
             info->boxedWasmCalleeLoadLocation = &info->boxedCallee;
 
