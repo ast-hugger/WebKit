@@ -42,13 +42,11 @@
 
 #define IMPLEMENTATION_POINTER(function) reinterpret_cast<WebAssemblyBuiltin::ImplementationPtr>(reinterpret_cast<void*>(function))
 
+// (result externref) (param externref externref)
+
 #define DEFINE_WASM_BUILTIN_HOST_FUNCTION(name, ...) \
     static EncodedJSValue SYSV_ABI name(__VA_ARGS__) REFERENCED_FROM_ASM WTF_INTERNAL; \
     EncodedJSValue SYSV_ABI name(__VA_ARGS__)
-
-#define DEFINE_WASM_BUILTIN_HOST_FUNCTION_I32(name, ...) \
-    static int32_t SYSV_ABI name(__VA_ARGS__) REFERENCED_FROM_ASM WTF_INTERNAL; \
-    int32_t SYSV_ABI name(__VA_ARGS__)
 
 #define DEFINE_BUILTIN_ENTRY_R_RR(name, impl) \
     DEFINE_WASM_BUILTIN_HOST_FUNCTION(name, EncodedJSValue arg0, EncodedJSValue arg1) \
@@ -68,6 +66,8 @@
         return JSValue::encode(impl(globalObject->vm(), globalObject, left, right)); \
     }
 
+// (result externref) (param externref)
+
 #define DEFINE_BUILTIN_ENTRY_R_R(name, impl) \
     DEFINE_WASM_BUILTIN_HOST_FUNCTION(name, EncodedJSValue arg) \
     { \
@@ -83,6 +83,29 @@
     { \
         JSValue value = callFrame->argument(0); \
         return JSValue::encode(impl(globalObject->vm(), globalObject, value)); \
+    }
+
+// (result i32) (param externref)
+
+#define DEFINE_WASM_BUILTIN_HOST_FUNCTION_I32(name, ...) \
+    static int32_t SYSV_ABI name(__VA_ARGS__) REFERENCED_FROM_ASM WTF_INTERNAL; \
+    int32_t SYSV_ABI name(__VA_ARGS__)
+
+#define DEFINE_BUILTIN_ENTRY_I_R(name, impl) \
+    DEFINE_WASM_BUILTIN_HOST_FUNCTION_I32(name, EncodedJSValue arg) \
+    { \
+        HOST_FUNCTION_PROLOGUE(vm, globalObject); \
+        JSValue value = JSValue::decode(arg); \
+        return impl(vm, globalObject, value); \
+    }
+
+#define DEFINE_BUILTIN_JS_ENTRY_I_R(name, impl) \
+    static JSC_DECLARE_HOST_FUNCTION(name); \
+    JSC_DEFINE_HOST_FUNCTION(name, (JSGlobalObject* globalObject, CallFrame* callFrame)) \
+    { \
+        JSValue value = callFrame->argument(0); \
+        JSValue result = JSValue(impl(globalObject->vm(), globalObject, value)); \
+        return JSValue::encode(result); \
     }
 
 namespace JSC {
@@ -184,6 +207,33 @@ static ALWAYS_INLINE JSValue doConcat(VM& vm, JSGlobalObject* globalObject, JSVa
 DEFINE_BUILTIN_ENTRY_R_RR(wasmJsStringConcat, doConcat)
 DEFINE_BUILTIN_JS_ENTRY_R_RR(wasmJsStringConcatJS, doConcat)
 
+/**
+ * See https://webassembly.github.io/js-string-builtins/js-api/#js-string-length
+ *
+ * Summary: if the value is a string, return its length.
+ * Otherwise, throw a RuntimeError.
+ */
+
+static ALWAYS_INLINE int32_t doLength(VM& vm, JSGlobalObject* globalObject, JSValue arg)
+{
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
+    if (!arg.isString()) {
+        JSObject* error = createJSWebAssemblyRuntimeError(globalObject, vm, "invalid length() argument"_s);
+        throwException(globalObject, scope, error);
+        return 0; // actual returned value doesn't matter
+    }
+
+    unsigned length = asString(arg)->length();
+    if (length > static_cast<uint64_t>(std::numeric_limits<int32_t>::max())) {
+        length = std::numeric_limits<int32_t>::max();
+    }
+    RELEASE_AND_RETURN(scope, length);
+}
+
+DEFINE_BUILTIN_ENTRY_I_R(wasmJsStringLength, doLength);
+DEFINE_BUILTIN_JS_ENTRY_I_R(wasmJsStringLengthJS, doLength);
+
 WebAssemblyBuiltinSet WebAssemblyBuiltinSet::jsString()
 {
     WebAssemblyBuiltinSet builtinSet = WebAssemblyBuiltinSet("wasm:js-string");
@@ -218,6 +268,14 @@ WebAssemblyBuiltinSet WebAssemblyBuiltinSet::jsString()
             { Wasm::externrefType(), Wasm::externrefType() }),
         IMPLEMENTATION_POINTER(wasmJsStringConcat),
         wasmJsStringConcatJS
+    ));
+    builtinSet.add(WebAssemblyBuiltin(
+        ASCIILiteral("length"),
+        Wasm::TypeInformation::typeDefinitionForFunction(
+            { Wasm::Types::I32 },
+            { Wasm::externrefType() }),
+        IMPLEMENTATION_POINTER(wasmJsStringLength),
+        wasmJsStringLengthJS
     ));
     return builtinSet;
 }

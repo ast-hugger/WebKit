@@ -6,9 +6,7 @@ async function testInstantiation() {
     const wat = `
     (module
         (import "wasm:js-string" "concat" (func $concatBuiltin (param externref externref) (result externref)))
-        (func (export "foo") (result i32)
-            i32.const 42
-        )
+        (export "foo" (func $concatBuiltin))
     )`;
     const buffer = await watToBuffer(wat);
 
@@ -31,7 +29,10 @@ async function testInstantiation() {
 // For the tests that follow
 async function instantiate(wat) {
     const buffer = await watToBuffer(wat);
-    const result = await WebAssembly.instantiate(buffer, {}, { builtins: ['js-string'] });
+    const result = await WebAssembly.instantiate(buffer, {}, {
+        builtins: ['js-string'],
+        importedStringConstants: "const"
+    });
     return result.instance;
 }
 
@@ -109,7 +110,50 @@ async function testConcat() {
     assert.throwsAny(exported, 42, "foo");
 }
 
+async function testLength() {
+    const wat = `
+    (module
+        (import "wasm:js-string" "length" (func $builtin (param externref) (result i32)))
+        (export "exported" (func $builtin))
+        (func (export "wrapper") (param $arg externref) (result i32)
+            local.get $arg
+            call $builtin
+        )
+    )`;
+    const instance = await instantiate(wat);
+    const wrapper = instance.exports.wrapper;
+    const exported = instance.exports.exported;
+
+    assert.eq(6, wrapper("foobar"));
+    assert.eq(0, wrapper(""));
+    assert.throwsAny(wrapper, 42);
+    assert.throwsAny(wrapper, null);
+
+    assert.eq(6, exported("foobar"));
+    assert.eq(0, exported(""));
+    assert.throwsAny(exported, 42);
+    assert.throwsAny(exported, null);
+}
+
+async function testImportedStringConstants() {
+    const wat = `
+    (module
+        (import "const" "this is constant 1" (global $const1 externref))
+        (import "const" "this is constant 2" (global $const2 externref))
+        (export "exportedConst2" (global $const2))
+        (func (export "returnConst1") (result externref)
+            global.get $const1
+        )
+    )`;
+    const instance = await instantiate(wat);
+
+    assert.eq("this is constant 1", instance.exports.returnConst1());
+    assert.eq("this is constant 2", instance.exports.exportedConst2.value);
+}
+
 await assert.asyncTest(testInstantiation());
 await assert.asyncTest(testCast());
 await assert.asyncTest(testTest());
 await assert.asyncTest(testConcat());
+await assert.asyncTest(testLength());
+await assert.asyncTest(testImportedStringConstants());

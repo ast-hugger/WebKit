@@ -592,8 +592,10 @@ protected:
     RegisterAtOffsetList* calleeSaveRegistersImpl() { return nullptr; }
 
 private:
+    // The wasm gate that calls the host function and handles any thrown errors.
     CodePtr<WasmEntryPtrTag> m_trampoline;
-    CodePtr<WasmEntryPtrTag> m_nativeFunction;
+    // The C++ function implementing the builtin.
+    CodePtr<WasmEntryPtrTag> m_hostFunction;
     const WebAssemblyBuiltin* m_builtin;
 };
 

@@ -595,7 +595,7 @@ WasmBuiltinCallee::WasmBuiltinCallee(const WebAssemblyBuiltin* builtin, Function
     , m_builtin(builtin)
 {
     void* cFunctionPtr = std::bit_cast<void*>(m_builtin->implementation());
-    m_nativeFunction = CodePtr<CFunctionPtrTag>::fromTaggedPtr(cFunctionPtr).retagged<WasmEntryPtrTag>();
+    m_hostFunction = CodePtr<CFunctionPtrTag>::fromTaggedPtr(cFunctionPtr).retagged<WasmEntryPtrTag>();
     m_trampoline = CodePtr<CFunctionPtrTag>(LLInt::getCodeFunctionPtr<CFunctionPtrTag>(ipint_host_function_call_trampoline)).retagged<WasmEntryPtrTag>();
 }
 
