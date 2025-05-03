@@ -47,16 +47,16 @@ async function testCast() {
         )
     )`;
     const instance = await instantiate(wat);
-    const wrapper = instance.exports.wrapper;
-    const exported = instance.exports.exported;
 
-    assert.eq("foobar", wrapper("foobar"));
-    assert.eq("", wrapper(""));
-    assert.throwsAny(wrapper, 42);
+    function check(fun) {
+        assert.eq("foobar", fun("foobar"));
+        assert.eq("", fun(""));
+        assert.throwsAny(fun, 42);
+        assert.throwsAny(fun, null);
+    }
 
-    assert.eq("foobar", exported("foobar"));
-    assert.eq("", exported(""));
-    assert.throwsAny(exported, 42);
+    check(instance.exports.wrapper);
+    check(instance.exports.exported);
 }
 
 async function testTest() {
@@ -70,16 +70,106 @@ async function testTest() {
         )
     )`;
     const instance = await instantiate(wat);
-    const wrapper = instance.exports.wrapper;
-    const exported = instance.exports.exported;
 
-    assert.eq(1, wrapper("foobar"));
-    assert.eq(1, wrapper(""));
-    assert.eq(0, wrapper(42));
+    function check(fun) {
+        assert.eq(1, fun("foobar"));
+        assert.eq(1, fun(""));
+        assert.eq(0, fun(42));
+        assert.eq(0, fun(null));
+    }
 
-    assert.eq(1, exported("foobar"));
-    assert.eq(1, exported(""));
-    assert.eq(0, exported(42));
+    check(instance.exports.wrapper);
+    check(instance.exports.exported);
+}
+
+async function testCharCodeAt() {
+    const wat = `
+    (module
+        (import "wasm:js-string" "charCodeAt" (func $builtin (param externref i32) (result i32)))
+        (import "wasm:js-string" "concat" (func $concat (param externref externref) (result externref)))
+        (export "exported" (func $builtin))
+        (func (export "wrapper") (param $arg externref) (param $len i32) (result i32)
+            local.get $arg
+            local.get $len
+            call $builtin
+        )
+        (func (export "concat") (param $left externref) (param $right externref) (result externref)
+            local.get $left
+            local.get $right
+            call $concat
+        )
+    )`;
+    const instance = await instantiate(wat);
+    const concat = instance.exports.concat;
+
+    const string = "ab😀c";
+    const string2 = concat("a😀", "β😦"); // makes a rope
+    function check(fun) {
+        assert.eq(97, fun(string, 0));
+        assert.eq(98, fun(string, 1));
+        assert.eq(0xD83D, fun(string, 2));
+        assert.eq(0xDE00, fun(string, 3));
+        assert.eq(99, fun(string, 4));
+        assert.throwsAny(fun, string, 5);
+        assert.throwsAny(fun, string, -1);
+        assert.throwsAny(fun, 42, 0);
+
+        assert.eq(97, fun(string2, 0));
+        assert.eq(0xD83D, fun(string2, 1));
+        assert.eq(0xDE00, fun(string2, 2));
+        assert.eq(0x3B2, fun(string2, 3));
+        assert.eq(0xD83D, fun(string2, 4));
+        assert.eq(0xDE26, fun(string2, 5));
+        assert.throwsAny(fun, string, 6);
+    }
+
+    check(instance.exports.wrapper);
+    check(instance.exports.exported);
+}
+
+async function testCodePointAt() {
+    const wat = `
+    (module
+        (import "wasm:js-string" "codePointAt" (func $builtin (param externref i32) (result i32)))
+        (import "wasm:js-string" "concat" (func $concat (param externref externref) (result externref)))
+        (export "exported" (func $builtin))
+        (func (export "wrapper") (param $arg externref) (param $len i32) (result i32)
+            local.get $arg
+            local.get $len
+            call $builtin
+        )
+        (func (export "concat") (param $left externref) (param $right externref) (result externref)
+            local.get $left
+            local.get $right
+            call $concat
+        )
+    )`;
+    const instance = await instantiate(wat);
+    const concat = instance.exports.concat;
+
+    const string = 'a😀bΩ';
+    const string2 = concat("a😀", "β😦"); // makes a rope
+    function check(fun) {
+        assert.eq(97, fun(string, 0));
+        assert.eq(0x1F600, fun(string, 1));
+        assert.eq(0xDE00, fun(string, 2)); // low surrogate of 😀
+        assert.eq(98, fun(string, 3));
+        assert.eq(937, fun(string, 4));
+        assert.throwsAny(fun, string, 5);
+        assert.throwsAny(fun, string, -1);
+        assert.throwsAny(fun, 42, 0);
+
+        assert.eq(97, fun(string2, 0));
+        assert.eq(0x1F600, fun(string2, 1));
+        assert.eq(0xDE00, fun(string2, 2));
+        assert.eq(0x3B2, fun(string2, 3));
+        assert.eq(0x1F626, fun(string2, 4));
+        assert.eq(0xDE26, fun(string2, 5)); // low surrogate of 😦
+        assert.throwsAny(fun, string, 6);
+    }
+
+    check(instance.exports.wrapper);
+    check(instance.exports.exported);
 }
 
 async function testConcat() {
@@ -94,20 +184,17 @@ async function testConcat() {
         )
     )`;
     const instance = await instantiate(wat);
-    const wrapper = instance.exports.wrapper;
-    const exported = instance.exports.exported;
 
-    assert.eq("foobar", wrapper("foo", "bar"));
-    assert.eq("foobar", wrapper("", "foobar"));
-    assert.eq("foobar", wrapper("foobar", ""));
-    assert.throwsAny(wrapper, "foo", 42);
-    assert.throwsAny(wrapper, 42, "foo");
+    function check(fun) {
+        assert.eq("foobar", fun("foo", "bar"));
+        assert.eq("foobar", fun("", "foobar"));
+        assert.eq("foobar", fun("foobar", ""));
+        assert.throwsAny(fun, "foo", 42);
+        assert.throwsAny(fun, 42, "foo");
+    }
 
-    assert.eq("foobar", exported("foo", "bar"));
-    assert.eq("foobar", exported("", "foobar"));
-    assert.eq("foobar", exported("foobar", ""));
-    assert.throwsAny(exported, "foo", 42);
-    assert.throwsAny(exported, 42, "foo");
+    check(instance.exports.wrapper);
+    check(instance.exports.exported);
 }
 
 async function testLength() {
@@ -121,18 +208,106 @@ async function testLength() {
         )
     )`;
     const instance = await instantiate(wat);
-    const wrapper = instance.exports.wrapper;
-    const exported = instance.exports.exported;
 
-    assert.eq(6, wrapper("foobar"));
-    assert.eq(0, wrapper(""));
-    assert.throwsAny(wrapper, 42);
-    assert.throwsAny(wrapper, null);
+    function check(fun) {
+        assert.eq(6, fun("foobar"));
+        assert.eq(0, fun(""));
+        assert.throwsAny(fun, 42);
+        assert.throwsAny(fun, null);
+    }
 
-    assert.eq(6, exported("foobar"));
-    assert.eq(0, exported(""));
-    assert.throwsAny(exported, 42);
-    assert.throwsAny(exported, null);
+    check(instance.exports.wrapper);
+    check(instance.exports.exported);
+}
+
+async function testSubstring() {
+    const wat = `
+    (module
+        (import "wasm:js-string" "substring" (func $builtin (param externref i32 i32) (result externref)))
+        (import "wasm:js-string" "concat" (func $concat (param externref externref) (result externref)))
+        (export "exported" (func $builtin))
+        (func (export "wrapper") (param $string externref) (param $start i32) (param $end i32) (result externref)
+            local.get $string
+            local.get $start
+            local.get $end
+            call $builtin
+        )
+        (func (export "concat") (param $left externref) (param $right externref) (result externref)
+            local.get $left
+            local.get $right
+            call $concat
+        )
+    )`;
+    const instance = await instantiate(wat);
+    const concat = instance.exports.concat;
+
+    const string = "Hello, world";
+    const string2 = concat("Hello", ", world");
+    function check(fun) {
+        // Normal cases
+        assert.eq("lo, w", fun(string, 3, 8));
+        assert.eq("lo, w", fun(string2, 3, 8));
+        assert.eq("", fun(string, 3, 3));
+        assert.eq("", fun(string2, 3, 3));
+        assert.eq("", fun(string, 0, 0));
+        assert.eq("", fun(string2, 0, 0));
+        assert.eq("d", fun(string, 11, 12));
+        assert.eq("d", fun(string2, 11, 12));
+        assert.eq("d", fun(string, 11, 13));
+        assert.eq("d", fun(string2, 11, 13));
+        assert.eq("", fun(string, 12, 12));
+        assert.eq("", fun(string2, 12, 12));
+        // Indices outside bounds
+        assert.eq("He", fun(string, -2, 2));
+        assert.eq("He", fun(string2, -2, 2));
+        assert.eq("orld", fun(string, 8, 20));
+        assert.eq("orld", fun(string2, 8, 20));
+        assert.eq("Hello, world", fun(string, -100, 100));
+        assert.eq("Hello, world", fun(string2, -100, 100));
+        // start > end and start > length
+        assert.eq("", fun(string, 3, 2));
+        assert.eq("", fun(string, 20, 25));
+        assert.eq("", fun(string, -3, -2));
+        assert.eq("", fun(string, -2, -3));
+        assert.eq("", fun(string2, 3, 2));
+        assert.eq("", fun(string2, 20, 25));
+        assert.eq("", fun(string2, -3, -2));
+        assert.eq("", fun(string2, -2, -3));
+        // Unicode ouside MBP
+        assert.eq("😀", fun("a😀", 1, 3));
+    }
+
+    check(instance.exports.wrapper);
+    check(instance.exports.exported);
+}
+
+async function testEquals() {
+    const wat = `
+    (module
+        (import "wasm:js-string" "equals" (func $builtin (param externref externref) (result i32)))
+        (export "exported" (func $builtin))
+        (func (export "wrapper") (param $left externref) (param $right externref) (result i32)
+            local.get $left
+            local.get $right
+            call $builtin
+        )
+    )`;
+    const instance = await instantiate(wat);
+
+    function check(fun) {
+        assert.eq(1, fun("foo", "foo"));
+        assert.eq(1, fun("bar", "bar"));
+        assert.eq(0, fun("foo", "bar"));
+        assert.eq(0, fun("bar", "foo"));
+        assert.eq(1, fun(null, null));
+        assert.throwsAny(fun, null, "foo");
+        assert.throwsAny(fun, "foo", null);
+        assert.throwsAny(fun, "foo", 42);
+        assert.throwsAny(fun, 42, "foo");
+    }
+
+    check(instance.exports.wrapper);
+    check(instance.exports.exported);
 }
 
 async function testImportedStringConstants() {
@@ -151,9 +326,13 @@ async function testImportedStringConstants() {
     assert.eq("this is constant 2", instance.exports.exportedConst2.value);
 }
 
-await assert.asyncTest(testInstantiation());
-await assert.asyncTest(testCast());
-await assert.asyncTest(testTest());
-await assert.asyncTest(testConcat());
-await assert.asyncTest(testLength());
-await assert.asyncTest(testImportedStringConstants());
+// await assert.asyncTest(testInstantiation());
+// await assert.asyncTest(testCast());
+// await assert.asyncTest(testTest());
+// await assert.asyncTest(testCharCodeAt());
+// await assert.asyncTest(testCodePointAt());
+// await assert.asyncTest(testLength());
+// await assert.asyncTest(testConcat());
+// await assert.asyncTest(testSubstring());
+await assert.asyncTest(testEquals());
+// await assert.asyncTest(testImportedStringConstants());

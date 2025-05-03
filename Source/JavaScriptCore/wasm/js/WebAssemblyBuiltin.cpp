@@ -26,6 +26,7 @@
  #if ENABLE(WEBASSEMBLY)
 
 #include "JITExceptions.h"
+#include "JSString.h"
 #include "JSWebAssemblyRuntimeError.h"
 #include "WebAssemblyBuiltin.h"
 
@@ -116,11 +117,27 @@ const WebAssemblyBuiltinSet* WebAssemblyBuiltinRegistry::findByQualifiedName(con
 
 #define IMPLEMENTATION_POINTER(function) reinterpret_cast<WebAssemblyBuiltin::ImplementationPtr>(reinterpret_cast<void*>(function))
 
-// (result externref) (param externref externref)
-
+// A host wasm function that returns an externref (EncodedJSValue)
 #define DEFINE_WASM_BUILTIN_HOST_FUNCTION(name, ...) \
     static EncodedJSValue SYSV_ABI name(__VA_ARGS__) REFERENCED_FROM_ASM WTF_INTERNAL; \
     EncodedJSValue SYSV_ABI name(__VA_ARGS__)
+
+// A host wasm function that returns an i32 (int32_t)
+#define DEFINE_WASM_BUILTIN_HOST_FUNCTION_I32(name, ...) \
+    static int32_t SYSV_ABI name(__VA_ARGS__) REFERENCED_FROM_ASM WTF_INTERNAL; \
+    int32_t SYSV_ABI name(__VA_ARGS__)
+
+#define JSVALUE_TO_I32(valueVar, i32Var) \
+    int32_t i32Var; \
+    if (valueVar.isInt32()) { \
+        i32Var = valueVar.asInt32(); \
+    } else { \
+        double doubleArg1 = valueVar.toIntegerOrInfinity(globalObject); \
+        RETURN_IF_EXCEPTION(scope,  { }); \
+        i32Var = static_cast<int32_t>(doubleArg1); \
+    }
+
+// (result externref) (param externref externref)
 
 #define DEFINE_BUILTIN_ENTRY_R_RR(name, impl) \
     DEFINE_WASM_BUILTIN_HOST_FUNCTION(name, EncodedJSValue arg0, EncodedJSValue arg1) \
@@ -138,6 +155,29 @@ const WebAssemblyBuiltinSet* WebAssemblyBuiltinRegistry::findByQualifiedName(con
         JSValue left = callFrame->argument(0); \
         JSValue right = callFrame->argument(1); \
         return JSValue::encode(impl(globalObject->vm(), globalObject, left, right)); \
+    }
+
+// (result externref) (param externref externref)
+
+#define DEFINE_BUILTIN_ENTRY_R_RII(name, impl) \
+    DEFINE_WASM_BUILTIN_HOST_FUNCTION(name, EncodedJSValue arg0, int32_t arg1, int32_t arg2) \
+    { \
+        HOST_FUNCTION_PROLOGUE(vm, globalObject); \
+        JSValue value0 = JSValue::decode(arg0); \
+        return JSValue::encode(impl(vm, globalObject, value0, arg1, arg2)); \
+    }
+
+#define DEFINE_BUILTIN_JS_ENTRY_R_RII(name, impl) \
+    static JSC_DECLARE_HOST_FUNCTION(name); \
+    JSC_DEFINE_HOST_FUNCTION(name, (JSGlobalObject* globalObject, CallFrame* callFrame)) \
+    { \
+        auto scope = DECLARE_THROW_SCOPE(globalObject->vm()); \
+        JSValue arg0 = callFrame->argument(0); \
+        JSValue arg1 = callFrame->argument(1); \
+        JSValue arg2 = callFrame->argument(2); \
+        JSVALUE_TO_I32(arg1, intArg1); \
+        JSVALUE_TO_I32(arg2, intArg2); \
+        RELEASE_AND_RETURN(scope, JSValue::encode(impl(globalObject->vm(), globalObject, arg0, intArg1, intArg2))); \
     }
 
 // (result externref) (param externref)
@@ -161,10 +201,6 @@ const WebAssemblyBuiltinSet* WebAssemblyBuiltinRegistry::findByQualifiedName(con
 
 // (result i32) (param externref)
 
-#define DEFINE_WASM_BUILTIN_HOST_FUNCTION_I32(name, ...) \
-    static int32_t SYSV_ABI name(__VA_ARGS__) REFERENCED_FROM_ASM WTF_INTERNAL; \
-    int32_t SYSV_ABI name(__VA_ARGS__)
-
 #define DEFINE_BUILTIN_ENTRY_I_R(name, impl) \
     DEFINE_WASM_BUILTIN_HOST_FUNCTION_I32(name, EncodedJSValue arg) \
     { \
@@ -182,9 +218,67 @@ const WebAssemblyBuiltinSet* WebAssemblyBuiltinRegistry::findByQualifiedName(con
         return JSValue::encode(result); \
     }
 
+// (result i32) (param externref i32)
+
+#define DEFINE_BUILTIN_ENTRY_I_RI(name, impl) \
+    DEFINE_WASM_BUILTIN_HOST_FUNCTION_I32(name, EncodedJSValue arg0, int32_t arg1) \
+    { \
+        HOST_FUNCTION_PROLOGUE(vm, globalObject); \
+        JSValue value0 = JSValue::decode(arg0); \
+        return impl(vm, globalObject, value0, arg1); \
+    }
+
+#define DEFINE_BUILTIN_JS_ENTRY_I_RI(name, impl) \
+    static JSC_DECLARE_HOST_FUNCTION(name); \
+    JSC_DEFINE_HOST_FUNCTION(name, (JSGlobalObject* globalObject, CallFrame* callFrame)) \
+    { \
+        auto scope = DECLARE_THROW_SCOPE(globalObject->vm()); \
+        JSValue arg0 = callFrame->argument(0); \
+        JSValue arg1 = callFrame->argument(1); \
+        JSVALUE_TO_I32(arg1, intArg1); \
+        int32_t result = impl(globalObject->vm(), globalObject, arg0, intArg1); \
+        RELEASE_AND_RETURN(scope, JSValue::encode(JSValue(result))); \
+    }
+
+// (result i32) (param externref externref)
+
+#define DEFINE_BUILTIN_ENTRY_I_RR(name, impl) \
+    DEFINE_WASM_BUILTIN_HOST_FUNCTION_I32(name, EncodedJSValue arg0, EncodedJSValue arg1) \
+    { \
+        HOST_FUNCTION_PROLOGUE(vm, globalObject); \
+        JSValue value0 = JSValue::decode(arg0); \
+        JSValue value1 = JSValue::decode(arg1); \
+        return impl(vm, globalObject, value0, value1); \
+    }
+
+#define DEFINE_BUILTIN_JS_ENTRY_I_RR(name, impl) \
+    static JSC_DECLARE_HOST_FUNCTION(name); \
+    JSC_DEFINE_HOST_FUNCTION(name, (JSGlobalObject* globalObject, CallFrame* callFrame)) \
+    { \
+        JSValue arg0 = callFrame->argument(0); \
+        JSValue arg1 = callFrame->argument(1); \
+        int32_t result = impl(globalObject->vm(), globalObject, arg0, arg1); \
+        return JSValue::encode(JSValue(result)); \
+    }
+
 /*
         wasm:js-string builtin set
+
+        Builtins in this set resemble the standard JS functions defined in String.prototype and
+        String constructor object (StringPrototype.cpp and StringConstructor.cpp). However,
+        differences in the exact semantics make it difficult to directly share implementations. For
+        example, String.prototype.charCodeAt returns NaN if the position is out of bounds, while
+        wasm:js-string.charCodeAt throws an exception. That's on top of the differences in calling
+        conventions: most JS string operations operate on 'this' while there is no such special
+        argument in wasm functions.
+
+        For this reason, builtin implementations here are independent from StringPrototype and
+        StringConstructor. That also applies to JS representatives of builtin functions (JS
+        functions exported when a builtin is re-expored). Again, that's because even when
+        re-exported as a JS function, a Wasm builtin receives arguments in a different way and in
+        general behaves slightly differently.
 */
+
 
 /**
  * A scratch builtin for trying things out, not part of the spec.
@@ -237,28 +331,86 @@ JSC_DEFINE_HOST_FUNCTION(wasmJsStringTestJS, (JSGlobalObject* globalObject, Call
     return JSValue::encode(result);
 }
 
+
 /**
- * See https://webassembly.github.io/js-string-builtins/js-api/#js-string-concat
+ * See https://webassembly.github.io/js-string-builtins/js-api/#js-string-charCodeAt
  *
- * Summary: if both values are strings, return the result of concatenating them.
- * Otherwise, throw a RuntimeError.
+ * The proposal states that if the index is greater than or equal to the string length, an exception
+ * is thrown. However, it does not say what happens if the index is negative. Step 4 is not
+ * applicable because it states "Return CharCodeAt(string, index)", and CharCodeAt behaves as
+ * String.prototype.charCodeAt, which would return NaN given a negative index. I'm assuming the
+ * intended but underspecified behavior here is also to throw if the index is negative.
  */
 
-static ALWAYS_INLINE JSValue doConcat(VM& vm, JSGlobalObject* globalObject, JSValue left, JSValue right)
+static ALWAYS_INLINE int32_t doCharCodeAt(VM& vm, JSGlobalObject* globalObject, JSValue arg, int32_t index)
 {
     auto scope = DECLARE_THROW_SCOPE(vm);
 
-    if (!left.isString() || !right.isString()) {
-        JSObject* error = createJSWebAssemblyRuntimeError(globalObject, vm, "invalid concat() arguments: both must be strings"_s);
-        return throwException(globalObject, scope, error);
+    if (!arg.isString()) {
+        JSObject* error = createJSWebAssemblyRuntimeError(globalObject, vm, "charCodeAt() first argument is not a string"_s);
+        throwException(globalObject, scope, error);
+        return 0; // actual returned value doesn't matter
     }
 
-    JSString* result = jsString(globalObject, asString(left), asString(right)); // creates a rope string
+    auto* string = arg.toString(globalObject);
+    RETURN_IF_EXCEPTION(scope, 0);
+    auto view = string->view(globalObject);
+    RETURN_IF_EXCEPTION(scope, 0);
+    if (index < 0 || static_cast<int32_t>(view->length()) <= index) {
+        JSObject* error = createJSWebAssemblyRuntimeError(globalObject, vm, "charCodeAt() index is out of bounds"_s);
+        throwException(globalObject, scope, error);
+        return 0; // actual returned value doesn't matter
+    }
+
+    UChar result = view[index];
     RELEASE_AND_RETURN(scope, result);
 }
 
-DEFINE_BUILTIN_ENTRY_R_RR(wasmJsStringConcat, doConcat)
-DEFINE_BUILTIN_JS_ENTRY_R_RR(wasmJsStringConcatJS, doConcat)
+DEFINE_BUILTIN_ENTRY_I_RI(wasmJsStringCharCodeAt, doCharCodeAt);
+DEFINE_BUILTIN_JS_ENTRY_I_RI(wasmJsStringCharCodeAtJS, doCharCodeAt);
+
+/**
+ * See https://webassembly.github.io/js-string-builtins/js-api/#js-string-codePointAt
+ *
+ * See the note on index validation in charCodeAt.
+ */
+
+static ALWAYS_INLINE int32_t doCodePointAt(VM& vm, JSGlobalObject* globalObject, JSValue arg, int32_t index)
+{
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
+    if (!arg.isString()) {
+        JSObject* error = createJSWebAssemblyRuntimeError(globalObject, vm, "charCodeAt() first argument is not a string"_s);
+        throwException(globalObject, scope, error);
+        return 0; // actual returned value doesn't matter
+    }
+
+    auto* string = arg.toString(globalObject);
+    RETURN_IF_EXCEPTION(scope, 0);
+    auto view = string->view(globalObject);
+    RETURN_IF_EXCEPTION(scope, 0);
+    unsigned length = view->length();
+    if (index < 0 || static_cast<int32_t>(length) <= index) {
+        JSObject* error = createJSWebAssemblyRuntimeError(globalObject, vm, "charCodeAt() index is out of bounds"_s);
+        throwException(globalObject, scope, error);
+        return 0; // actual returned value doesn't matter
+    }
+
+    int32_t result;
+    if (view->is8Bit()) {
+        result = view->span8()[index];
+    } else {
+        char32_t character;
+        auto characters = view->span16();
+        unsigned i = static_cast<unsigned>(index);
+        U16_NEXT(characters, i, length, character);
+        result = static_cast<int32_t>(character);
+    }
+    RELEASE_AND_RETURN(scope, result);
+}
+
+DEFINE_BUILTIN_ENTRY_I_RI(wasmJsStringCodePointAt, doCodePointAt);
+DEFINE_BUILTIN_JS_ENTRY_I_RI(wasmJsStringCodePointAtJS, doCodePointAt);
 
 /**
  * See https://webassembly.github.io/js-string-builtins/js-api/#js-string-length
@@ -286,6 +438,105 @@ static ALWAYS_INLINE int32_t doLength(VM& vm, JSGlobalObject* globalObject, JSVa
 
 DEFINE_BUILTIN_ENTRY_I_R(wasmJsStringLength, doLength);
 DEFINE_BUILTIN_JS_ENTRY_I_R(wasmJsStringLengthJS, doLength);
+
+/**
+ * See https://webassembly.github.io/js-string-builtins/js-api/#js-string-concat
+ *
+ * Summary: if both values are strings, return the result of concatenating them.
+ * Otherwise, throw a RuntimeError.
+ */
+
+static ALWAYS_INLINE JSValue doConcat(VM& vm, JSGlobalObject* globalObject, JSValue left, JSValue right)
+{
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
+    if (!left.isString() || !right.isString()) {
+        JSObject* error = createJSWebAssemblyRuntimeError(globalObject, vm, "invalid concat() arguments: both must be strings"_s);
+        return throwException(globalObject, scope, error);
+    }
+
+    JSString* result = jsString(globalObject, asString(left), asString(right)); // creates a rope string
+    RELEASE_AND_RETURN(scope, result);
+}
+
+DEFINE_BUILTIN_ENTRY_R_RR(wasmJsStringConcat, doConcat)
+DEFINE_BUILTIN_JS_ENTRY_R_RR(wasmJsStringConcatJS, doConcat)
+
+/**
+ * See https://webassembly.github.io/js-string-builtins/js-api/#js-string-substring
+ *
+ * The spec does not specify the interpretation of negative indices, and redundantly
+ * specifies the behavior for 'start > end' and 'start > length', which already
+ * follows from the spec for String.prototype.substring. What's implemented here
+ * is what String.prototype.substring does.
+ */
+
+static ALWAYS_INLINE JSValue doSubstring(VM& vm, JSGlobalObject* globalObject, JSValue arg, int32_t start, int32_t end)
+{
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
+    if (!arg.isString()) {
+        JSObject* error = createJSWebAssemblyRuntimeError(globalObject, vm, "substring() first argument must be a string"_s);
+        return throwException(globalObject, scope, error);
+    }
+
+    JSString* string = asString(arg);
+    unsigned length = string->length();
+    unsigned substringStart = start >= 0 ? static_cast<unsigned>(start) : 0;
+    unsigned substringEnd = end >= 0 ? static_cast<unsigned>(end) : 0;
+    if (substringStart >= length)
+        substringStart = length;
+    if (substringEnd > length)
+        substringEnd = length;
+    if (substringStart > substringEnd)
+        substringStart = substringEnd;
+    unsigned substringLength = substringEnd - substringStart;
+    RELEASE_AND_RETURN(scope, jsSubstring(globalObject, string, substringStart, substringLength));
+}
+
+DEFINE_BUILTIN_ENTRY_R_RII(wasmJsStringSubstring, doSubstring)
+DEFINE_BUILTIN_JS_ENTRY_R_RII(wasmJsStringSubstringJS, doSubstring)
+
+/**
+ * See https://webassembly.github.io/js-string-builtins/js-api/#js-string-equals
+ *
+ * Summary: each argument must be a string or a null, or an exception is thrown.
+ * If this initial type check passes, comparison behaves as tc39's IsStrictlyEqual,
+ * see https://tc39.es/ecma262/#sec-isstrictlyequal
+ */
+
+static ALWAYS_INLINE int32_t doEquals(VM& vm, JSGlobalObject* globalObject, JSValue left, JSValue right)
+{
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
+    bool leftIsString = left.isString();
+    bool leftIsNull = left.isNull();
+    bool rightIsString = right.isString();
+    bool rightIsNull = right.isNull();
+    if (!(leftIsString || leftIsNull) || !(rightIsString || rightIsNull)) {
+        JSObject* error = createJSWebAssemblyRuntimeError(globalObject, vm, "invalid equals() arguments"_s);
+        throwException(globalObject, scope, error);
+        return 0; // actual returned value doesn't matter
+    }
+    if (!((leftIsString && rightIsString) || (leftIsNull && rightIsNull))) {
+        JSObject* error = createJSWebAssemblyRuntimeError(globalObject, vm, "invalid equals() arguments"_s);
+        throwException(globalObject, scope, error);
+        return 0; // actual returned value doesn't matter
+    }
+
+    int32_t result;
+    if (leftIsNull) {
+        result = true;
+    } else {
+        JSString* leftString = asString(left);
+        JSString* rightString = asString(right);
+        result = leftString->equal(globalObject, rightString);
+    }
+    RELEASE_AND_RETURN(scope, result);
+}
+
+DEFINE_BUILTIN_ENTRY_I_RR(wasmJsStringEquals, doEquals)
+DEFINE_BUILTIN_JS_ENTRY_I_RR(wasmJsStringEqualsJS, doEquals)
 
 WebAssemblyBuiltinSet WebAssemblyBuiltinSet::jsString()
 {
@@ -323,12 +574,44 @@ WebAssemblyBuiltinSet WebAssemblyBuiltinSet::jsString()
         wasmJsStringConcatJS
     ));
     builtinSet.add(WebAssemblyBuiltin(
+        ASCIILiteral("substring"),
+        Wasm::TypeInformation::typeDefinitionForFunction(
+            { Wasm::externrefType() },
+            { Wasm::externrefType(), Wasm::Types::I32, Wasm::Types::I32 }),
+        IMPLEMENTATION_POINTER(wasmJsStringSubstring),
+        wasmJsStringSubstringJS
+    ));
+    builtinSet.add(WebAssemblyBuiltin(
+        ASCIILiteral("charCodeAt"),
+        Wasm::TypeInformation::typeDefinitionForFunction(
+            { Wasm::Types::I32 },
+            { Wasm::externrefType(), Wasm::Types::I32 }),
+        IMPLEMENTATION_POINTER(wasmJsStringCharCodeAt),
+        wasmJsStringCharCodeAtJS
+    ));
+    builtinSet.add(WebAssemblyBuiltin(
+        ASCIILiteral("codePointAt"),
+        Wasm::TypeInformation::typeDefinitionForFunction(
+            { Wasm::Types::I32 },
+            { Wasm::externrefType(), Wasm::Types::I32 }),
+        IMPLEMENTATION_POINTER(wasmJsStringCodePointAt),
+        wasmJsStringCodePointAtJS
+    ));
+    builtinSet.add(WebAssemblyBuiltin(
         ASCIILiteral("length"),
         Wasm::TypeInformation::typeDefinitionForFunction(
             { Wasm::Types::I32 },
             { Wasm::externrefType() }),
         IMPLEMENTATION_POINTER(wasmJsStringLength),
         wasmJsStringLengthJS
+    ));
+    builtinSet.add(WebAssemblyBuiltin(
+        ASCIILiteral("equals"),
+        Wasm::TypeInformation::typeDefinitionForFunction(
+            { Wasm::Types::I32 },
+            { Wasm::externrefType(), Wasm::externrefType() }),
+        IMPLEMENTATION_POINTER(wasmJsStringEquals),
+        wasmJsStringEqualsJS
     ));
     builtinSet.finalizeCreation();
     return builtinSet;
