@@ -790,7 +790,6 @@ end)
 op(ipint_host_function_call_trampoline, macro()
     functionPrologue()
     getIPIntCallee() # into ws0 and UnboxedWasmCalleeStackSlot[cfr]
-#    move ws0, ws3 # a copy for debugging
     loadp Wasm::WasmBuiltinCallee::m_hostFunction[ws0], ws0
 
 if ARM64E

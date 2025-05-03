@@ -27,6 +27,7 @@
 
 #if ENABLE(WEBASSEMBLY)
 
+#include "LLIntData.h"
 #include "JITCompilation.h"
 #include "NativeCallee.h"
 #include "PCToCodeOriginMap.h"
@@ -585,16 +586,17 @@ public:
     WasmBuiltinCallee(const WebAssemblyBuiltin*, FunctionSpaceIndex, std::pair<const Name*, RefPtr<NameSection>>&&);
 
     const WebAssemblyBuiltin* builtin() { return m_builtin; }
-    CodePtr<WasmEntryPtrTag> entrypointImpl() const { return m_trampoline; }
+    CodePtr<WasmEntryPtrTag> entrypointImpl() const {
+        return CodePtr<CFunctionPtrTag>(LLInt::getCodeFunctionPtr<CFunctionPtrTag>(ipint_host_function_call_trampoline)).retagged<WasmEntryPtrTag>();
+    }
 
 protected:
     std::tuple<void*, void*> rangeImpl() const { return { nullptr, nullptr }; }
     RegisterAtOffsetList* calleeSaveRegistersImpl() { return nullptr; }
 
 private:
-    // The wasm gate that calls the host function and handles any thrown errors.
-    CodePtr<WasmEntryPtrTag> m_trampoline;
-    // The C++ function implementing the builtin.
+    // The C++ function implementing the builtin, fetched as 'builtin->implementation()'
+    // and retagged and cached here for ease of access by the trampoline.
     CodePtr<WasmEntryPtrTag> m_hostFunction;
     const WebAssemblyBuiltin* m_builtin;
 };

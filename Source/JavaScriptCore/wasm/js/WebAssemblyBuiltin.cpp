@@ -31,6 +31,80 @@
 
 #include "wtf/text/MakeString.h"
 
+namespace JSC {
+
+JSObject* WebAssemblyBuiltin::jsRepresentative(JSGlobalObject* globalObject) const
+{
+    return JSFunction::create(globalObject->vm(), globalObject, 0, m_name, m_reexportImplementation, ImplementationVisibility::Public, JSC::NoIntrinsic);
+}
+
+const WebAssemblyBuiltin* WebAssemblyBuiltinSet::findBuiltin(const String& name) const
+{
+    auto it = m_builtinsByName.find(name);
+    return it != m_builtinsByName.end() ? it->value : nullptr;
+}
+
+void WebAssemblyBuiltinSet::add(WebAssemblyBuiltin&& builtin)
+{
+    m_builtins.append(WTFMove(builtin));
+}
+
+WTF_ALLOW_UNSAFE_BUFFER_USAGE_BEGIN  // for memcpy()
+
+void WebAssemblyBuiltinSet::finalizeCreation()
+{
+    // Should not be called repeatedly
+    ASSERT(m_builtinsByName.isEmpty());
+    ASSERT(m_nameSection->functionNames.isEmpty());
+
+    size_t builtinCount = m_builtins.size();
+    m_nameSection->functionNames.resize(builtinCount);
+    for (size_t i = 0; i < builtinCount; i++) {
+        auto& builtin = m_builtins[i];
+        String builtinName = String(builtin.name());
+
+        // Enter the builtin into the lookup table
+        m_builtinsByName.add(builtinName, &builtin);
+
+        // Create a simulated wasm name section entry for the builtin
+        String fullName = makeString(String(m_qualifiedName), "."_s, builtinName);
+        auto span = fullName.span8();
+        Wasm::Name name;
+        name.tryReserveCapacity(span.size());
+        name.grow(span.size());
+        memcpy(name.data(), span.data(), span.size());
+        m_nameSection->functionNames[i] = WTFMove(name);
+        builtin.m_wasmName = &m_nameSection->functionNames[i];
+        builtin.m_nameSection = m_nameSection.ptr();
+    }
+}
+
+WTF_ALLOW_UNSAFE_BUFFER_USAGE_END
+
+const WebAssemblyBuiltinRegistry& WebAssemblyBuiltinRegistry::singleton()
+{
+    static NeverDestroyed<WebAssemblyBuiltinRegistry> registry;
+    return registry.get();
+}
+
+WebAssemblyBuiltinRegistry::WebAssemblyBuiltinRegistry()
+{
+    m_builtinSets.append(WebAssemblyBuiltinSet::jsString());
+}
+
+// The registry is immutable once constructed so we don't worry about concurrency.
+const WebAssemblyBuiltinSet* WebAssemblyBuiltinRegistry::findByQualifiedName(const String& name) const
+{
+    size_t index = m_builtinSets.findIf([&](auto& builtinSet) {
+        return name == builtinSet.qualifiedName();
+    });
+    return index != notFound ? &m_builtinSets[index] : nullptr;
+}
+
+/*
+        Builtin implementation macrology
+*/
+
 // A builtin host function is called by a wrapper (ipint_host_function_call_trampoline)
 // so the relevant CallFrame is the call frame of the caller.
 #define HOST_FUNCTION_PROLOGUE(vm, globalObject) \
@@ -107,27 +181,6 @@
         JSValue result = JSValue(impl(globalObject->vm(), globalObject, value)); \
         return JSValue::encode(result); \
     }
-
-namespace JSC {
-
-JSObject* WebAssemblyBuiltin::reExportRepresentative(JSGlobalObject* globalObject) const
-{
-    return JSFunction::create(globalObject->vm(), globalObject, 0, m_name, m_reexportImplementation, ImplementationVisibility::Public, JSC::NoIntrinsic);
-}
-
-const WebAssemblyBuiltin* WebAssemblyBuiltinSet::findBuiltin(const String& name) const
-{
-    auto it = m_builtinsByName.find(name);
-    return it != m_builtinsByName.end() ? it->value : nullptr;
-}
-
-void WebAssemblyBuiltinSet::add(WebAssemblyBuiltin&& builtin)
-{
-    m_builtins.append(WTFMove(builtin));
-    auto* added = &m_builtins.last();
-    String name = String(added->name());
-    m_builtinsByName.add(name, added);
-}
 
 /*
         wasm:js-string builtin set
@@ -277,27 +330,8 @@ WebAssemblyBuiltinSet WebAssemblyBuiltinSet::jsString()
         IMPLEMENTATION_POINTER(wasmJsStringLength),
         wasmJsStringLengthJS
     ));
+    builtinSet.finalizeCreation();
     return builtinSet;
-}
-
-const WebAssemblyBuiltinRegistry& WebAssemblyBuiltinRegistry::singleton()
-{
-    static NeverDestroyed<WebAssemblyBuiltinRegistry> registry;
-    return registry.get();
-}
-
-WebAssemblyBuiltinRegistry::WebAssemblyBuiltinRegistry()
-{
-    m_builtinSets.append(WebAssemblyBuiltinSet::jsString());
-}
-
-// The registry is immutable once constructed so we don't worry about concurrency.
-const WebAssemblyBuiltinSet* WebAssemblyBuiltinRegistry::findByQualifiedName(const String& name) const
-{
-    size_t index = m_builtinSets.findIf([&](auto& builtinSet) {
-        return name == builtinSet.qualifiedName();
-    });
-    return index != notFound ? &m_builtinSets[index] : nullptr;
 }
 
 } // namespace JSC

@@ -137,7 +137,7 @@ static void initializeBuiltinImport(VM& vm, WriteBarrier<JSWebAssemblyInstance>&
 {
     auto* info = instance->importFunctionInfo(import.kindIndex);
     auto& callees = instance->builtinCallees();
-    callees.append(adoptRef(*new Wasm::WasmBuiltinCallee(builtin, Wasm::FunctionSpaceIndex(import.kindIndex), { nullptr, nullptr }))); // FIXME(vb): can we do better than the two nulls here?
+    callees.append(adoptRef(*new Wasm::WasmBuiltinCallee(builtin, Wasm::FunctionSpaceIndex(import.kindIndex), { builtin->wasmName(), builtin->nameSection() })));
     auto* callee = std::bit_cast<Wasm::WasmBuiltinCallee*>(callees.last().ptr());
     info->boxedCallee = CalleeBits::encodeNativeCallee(callee);
     info->boxedWasmCalleeLoadLocation = &info->boxedCallee;
@@ -289,7 +289,7 @@ void WebAssemblyModuleRecord::initializeImports(JSGlobalObject* globalObject, JS
             // Note: adding the JSCell to the instance list fulfills closure requirements b. above (the WebAssembly.Instance wil be kept alive) and v. below (the JSFunction).
 
             auto* info = m_instance->importFunctionInfo(import.kindIndex);
-            info->importFunctionStub = nullptr; // null distinguishes this case from builtin imports, which set the stub to non-null
+            info->importFunctionStub = nullptr; // null distinguishes this case from builtin imports, which set the stub
             info->boxedWasmCalleeLoadLocation = boxedWasmCalleeLoadLocation;
             info->targetInstance.setMayBeNull(vm, m_instance.get(), calleeInstance);
             info->entrypointLoadLocation = entrypointLoadLocation;
@@ -568,7 +568,7 @@ void WebAssemblyModuleRecord::initializeExports(JSGlobalObject* globalObject)
                 auto calleeBits = std::bit_cast<CalleeBits>(callLinkInfo->boxedCallee);
                 auto* callee = std::bit_cast<Wasm::WasmBuiltinCallee*>(calleeBits.asNativeCallee());
                 const WebAssemblyBuiltin* builtin = callee->builtin();
-                wrapper = builtin->reExportRepresentative(globalObject);
+                wrapper = builtin->jsRepresentative(globalObject);
             } else if (isWebAssemblyHostFunction(functionImport))
                 wrapper = functionImport;
             else {
