@@ -538,6 +538,32 @@ static ALWAYS_INLINE int32_t doEquals(VM& vm, JSGlobalObject* globalObject, JSVa
 DEFINE_BUILTIN_ENTRY_I_RR(wasmJsStringEquals, doEquals)
 DEFINE_BUILTIN_JS_ENTRY_I_RR(wasmJsStringEqualsJS, doEquals)
 
+/**
+ * See https://webassembly.github.io/js-string-builtins/js-api/#js-string-compare
+ *
+ * Unlike 'equals', the spec says the args may only be strings--no nulls.
+ */
+
+ static ALWAYS_INLINE int32_t doCompare(VM& vm, JSGlobalObject* globalObject, JSValue left, JSValue right)
+ {
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
+    if (!left.isString() || !right.isString()) {
+        JSObject* error = createJSWebAssemblyRuntimeError(globalObject, vm, "invalid concat() arguments: both must be strings"_s);
+        throwException(globalObject, scope, error);
+        return 0;
+    }
+
+    JSString* leftString = left.toStringOrNull(globalObject);
+    JSString* rightString = right.toStringOrNull(globalObject);
+    UNUSED_PARAM(leftString);
+    UNUSED_PARAM(rightString);
+    //  int32_t result = leftString->codePointCompare(rightString);
+    int32_t result = 0;
+    RELEASE_AND_RETURN(scope, result);
+ }
+
+
 WebAssemblyBuiltinSet WebAssemblyBuiltinSet::jsString()
 {
     WebAssemblyBuiltinSet builtinSet = WebAssemblyBuiltinSet("wasm:js-string");

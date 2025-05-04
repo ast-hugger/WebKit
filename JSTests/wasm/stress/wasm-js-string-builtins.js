@@ -310,6 +310,29 @@ async function testEquals() {
     check(instance.exports.exported);
 }
 
+async function testCompare() {
+    const wat = `
+    (module
+        (import "wasm:js-string" "compare" (func $builtin (param externref externref) (result i32)))
+        (export "exported" (func $builtin))
+        (func (export "wrapper") (param $left externref) (param $right externref) (result i32)
+            local.get $left
+            local.get $right
+            call $builtin
+        )
+    )`;
+    const instance = await instantiate(wat);
+
+    function check(fun) {
+        assert.eq(1, fun("foo", "bar"));
+        assert.eq(0, fun("foo", "foo"));
+        assert.eq(-1, fun("bar", "foo"));
+    }
+
+    check(instance.exports.wrapper);
+    check(instance.exports.exported);
+}
+
 async function testImportedStringConstants() {
     const wat = `
     (module
@@ -326,13 +349,38 @@ async function testImportedStringConstants() {
     assert.eq("this is constant 2", instance.exports.exportedConst2.value);
 }
 
-// await assert.asyncTest(testInstantiation());
-// await assert.asyncTest(testCast());
-// await assert.asyncTest(testTest());
-// await assert.asyncTest(testCharCodeAt());
+await assert.asyncTest(testInstantiation());
+await assert.asyncTest(testCast());
+await assert.asyncTest(testTest());
+await assert.asyncTest(testCharCodeAt());
 // await assert.asyncTest(testCodePointAt());
 // await assert.asyncTest(testLength());
 // await assert.asyncTest(testConcat());
+
+
+await assert.asyncTest(testConcat());
+await assert.asyncTest(testSubstring());
+await assert.asyncTest(testConcat());
+await assert.asyncTest(testSubstring());
+await assert.asyncTest(testConcat());
+await assert.asyncTest(testSubstring());
+await assert.asyncTest(testConcat());
+await assert.asyncTest(testSubstring());
+await assert.asyncTest(testConcat());
+await assert.asyncTest(testSubstring());
+await assert.asyncTest(testConcat());
+await assert.asyncTest(testSubstring());
+await assert.asyncTest(testConcat());
+await assert.asyncTest(testSubstring());
+await assert.asyncTest(testConcat());
+await assert.asyncTest(testSubstring());
+await assert.asyncTest(testConcat());
+await assert.asyncTest(testSubstring());
+await assert.asyncTest(testConcat());
+await assert.asyncTest(testSubstring());
+
+
 // await assert.asyncTest(testSubstring());
-await assert.asyncTest(testEquals());
+// await assert.asyncTest(testEquals());
+// await assert.asyncTest(testCompare());
 // await assert.asyncTest(testImportedStringConstants());
