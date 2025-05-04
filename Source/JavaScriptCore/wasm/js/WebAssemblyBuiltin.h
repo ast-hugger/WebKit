@@ -121,6 +121,7 @@ public:
     static const WebAssemblyBuiltinRegistry& singleton();
 
     WebAssemblyBuiltinRegistry();
+    WebAssemblyBuiltinRegistry(WebAssemblyBuiltinRegistry&&) = default;
 
     /// Look for a builtin set instance with the specified qualified name.
     /// Return a pointer to the set, or nullptr if not found.

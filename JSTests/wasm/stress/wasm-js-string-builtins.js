@@ -353,34 +353,10 @@ await assert.asyncTest(testInstantiation());
 await assert.asyncTest(testCast());
 await assert.asyncTest(testTest());
 await assert.asyncTest(testCharCodeAt());
-// await assert.asyncTest(testCodePointAt());
-// await assert.asyncTest(testLength());
-// await assert.asyncTest(testConcat());
-
-
+await assert.asyncTest(testCodePointAt());
+await assert.asyncTest(testLength());
 await assert.asyncTest(testConcat());
-await assert.asyncTest(testSubstring());
-await assert.asyncTest(testConcat());
-await assert.asyncTest(testSubstring());
-await assert.asyncTest(testConcat());
-await assert.asyncTest(testSubstring());
-await assert.asyncTest(testConcat());
-await assert.asyncTest(testSubstring());
-await assert.asyncTest(testConcat());
-await assert.asyncTest(testSubstring());
-await assert.asyncTest(testConcat());
-await assert.asyncTest(testSubstring());
-await assert.asyncTest(testConcat());
-await assert.asyncTest(testSubstring());
-await assert.asyncTest(testConcat());
-await assert.asyncTest(testSubstring());
-await assert.asyncTest(testConcat());
-await assert.asyncTest(testSubstring());
-await assert.asyncTest(testConcat());
-await assert.asyncTest(testSubstring());
-
-
 // await assert.asyncTest(testSubstring());
-// await assert.asyncTest(testEquals());
-// await assert.asyncTest(testCompare());
-// await assert.asyncTest(testImportedStringConstants());
+await assert.asyncTest(testEquals());
+await assert.asyncTest(testCompare());
+await assert.asyncTest(testImportedStringConstants());

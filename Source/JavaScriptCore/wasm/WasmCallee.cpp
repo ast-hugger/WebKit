@@ -128,6 +128,9 @@ inline void Callee::runWithDowncast(const Func& func)
     case CompilationMode::WasmToJSMode:
         func(static_cast<WasmToJSCallee*>(this));
         break;
+    case CompilationMode::WasmBuiltinMode:
+        func(static_cast<WasmBuiltinCallee*>(this)); // FIXME(vb): should we run it or not?
+        break;
     }
 }
 
@@ -591,7 +594,7 @@ BBQCallee::~BBQCallee()
 #endif
 
 WasmBuiltinCallee::WasmBuiltinCallee(const WebAssemblyBuiltin* builtin, FunctionSpaceIndex index, std::pair<const Name*, RefPtr<NameSection>>&& name)
-    : Callee(Wasm::CompilationMode::IPIntMode, index, WTFMove(name)) // FIXME(vb): just using whatever mode feels okay, what's the right mode here?
+    : Callee(Wasm::CompilationMode::WasmBuiltinMode, index, WTFMove(name)) // FIXME(vb): just using whatever mode feels okay, what's the right mode here?
     , m_builtin(builtin)
 {
     void* cFunctionPtr = std::bit_cast<void*>(m_builtin->implementation());

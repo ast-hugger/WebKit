@@ -556,13 +556,14 @@ DEFINE_BUILTIN_JS_ENTRY_I_RR(wasmJsStringEqualsJS, doEquals)
 
     JSString* leftString = left.toStringOrNull(globalObject);
     JSString* rightString = right.toStringOrNull(globalObject);
-    UNUSED_PARAM(leftString);
-    UNUSED_PARAM(rightString);
-    //  int32_t result = leftString->codePointCompare(rightString);
-    int32_t result = 0;
+    auto leftView = leftString->view(globalObject);
+    auto rightView = rightString->view(globalObject);
+    int32_t result = codePointCompare(StringView(leftView), StringView(rightView));
     RELEASE_AND_RETURN(scope, result);
  }
 
+ DEFINE_BUILTIN_ENTRY_I_RR(wasmJsStringCompare, doCompare)
+ DEFINE_BUILTIN_JS_ENTRY_I_RR(wasmJsStringCompareJS, doCompare)
 
 WebAssemblyBuiltinSet WebAssemblyBuiltinSet::jsString()
 {
@@ -638,6 +639,14 @@ WebAssemblyBuiltinSet WebAssemblyBuiltinSet::jsString()
             { Wasm::externrefType(), Wasm::externrefType() }),
         IMPLEMENTATION_POINTER(wasmJsStringEquals),
         wasmJsStringEqualsJS
+    ));
+    builtinSet.add(WebAssemblyBuiltin(
+        ASCIILiteral("compare"),
+        Wasm::TypeInformation::typeDefinitionForFunction(
+            { Wasm::Types::I32 },
+            { Wasm::externrefType(), Wasm::externrefType() }),
+        IMPLEMENTATION_POINTER(wasmJsStringCompare),
+        wasmJsStringCompareJS
     ));
     builtinSet.finalizeCreation();
     return builtinSet;
