@@ -218,6 +218,26 @@ const WebAssemblyBuiltinSet* WebAssemblyBuiltinRegistry::findByQualifiedName(con
         return JSValue::encode(result); \
     }
 
+// (result externref) (param i32)
+
+#define DEFINE_BUILTIN_ENTRY_R_I(name, impl) \
+    DEFINE_WASM_BUILTIN_HOST_FUNCTION(name, int32_t arg) \
+    { \
+        HOST_FUNCTION_PROLOGUE(vm, globalObject); \
+        return JSValue::encode(impl(vm, globalObject, arg)); \
+    }
+
+#define DEFINE_BUILTIN_JS_ENTRY_R_I(name, impl) \
+    static JSC_DECLARE_HOST_FUNCTION(name); \
+    JSC_DEFINE_HOST_FUNCTION(name, (JSGlobalObject* globalObject, CallFrame* callFrame)) \
+    { \
+        auto scope = DECLARE_THROW_SCOPE(globalObject->vm()); \
+        JSValue arg = callFrame->argument(0); \
+        JSVALUE_TO_I32(arg, intArg); \
+        JSValue result = JSValue(impl(globalObject->vm(), globalObject, intArg)); \
+        RELEASE_AND_RETURN(scope, JSValue::encode(result)); \
+    }
+
 // (result i32) (param externref i32)
 
 #define DEFINE_BUILTIN_ENTRY_I_RI(name, impl) \
@@ -268,9 +288,10 @@ const WebAssemblyBuiltinSet* WebAssemblyBuiltinRegistry::findByQualifiedName(con
         String constructor object (StringPrototype.cpp and StringConstructor.cpp). However,
         differences in the exact semantics make it difficult to directly share implementations. For
         example, String.prototype.charCodeAt returns NaN if the position is out of bounds, while
-        wasm:js-string.charCodeAt throws an exception. That's on top of the differences in calling
-        conventions: most JS string operations operate on 'this' while there is no such special
-        argument in wasm functions.
+        wasm:js-string.charCodeAt throws an exception. In JavaScript the argument can be anything,
+        but in wasm it's an `int32`. That's on top of the differences in calling conventions: most
+        JS string operations operate on 'this' while there is no such special argument in wasm
+        functions.
 
         For this reason, builtin implementations here are independent from StringPrototype and
         StringConstructor. That also applies to JS representatives of builtin functions (JS
@@ -279,17 +300,6 @@ const WebAssemblyBuiltinSet* WebAssemblyBuiltinRegistry::findByQualifiedName(con
         general behaves slightly differently.
 */
 
-
-/**
- * A scratch builtin for trying things out, not part of the spec.
- */
-DEFINE_WASM_BUILTIN_HOST_FUNCTION(wasmJsStringHello)
-{
-    HOST_FUNCTION_PROLOGUE(vm, globalObject);
-    UNUSED_PARAM(globalObject);
-
-    return JSValue::encode(jsString(vm, String::fromLatin1("Hello from the 'wasm:js-string:hello' builtin!")));
-}
 
 /**
  * See: https://webassembly.github.io/js-string-builtins/js-api/#js-string-cast
@@ -331,6 +341,47 @@ JSC_DEFINE_HOST_FUNCTION(wasmJsStringTestJS, (JSGlobalObject* globalObject, Call
     return JSValue::encode(result);
 }
 
+/**
+ * See https://webassembly.github.io/js-string-builtins/js-api/#js-string-fromCharCode
+ */
+
+static ALWAYS_INLINE JSValue doFromCharCode(VM& vm, JSGlobalObject* globalObject, int32_t arg)
+{
+    UNUSED_PARAM(globalObject);
+    UChar code = static_cast<UChar>(arg);
+    return jsSingleCharacterString(vm, code);
+}
+
+DEFINE_BUILTIN_ENTRY_R_I(wasmJsStringFromCharCode, doFromCharCode);
+DEFINE_BUILTIN_JS_ENTRY_R_I(wasmJsStringFromCharCodeJS, doFromCharCode);
+
+/**
+ * See https://webassembly.github.io/js-string-builtins/js-api/#js-string-fromCodePoint
+ */
+
+static ALWAYS_INLINE JSValue doFromCodePoint(VM& vm, JSGlobalObject* globalObject, int32_t arg)
+{
+    UNUSED_PARAM(globalObject);
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
+    uint32_t codePoint = static_cast<uint32_t>(arg);
+    if (codePoint > 0x10ffff) {
+        JSObject* error = createJSWebAssemblyRuntimeError(globalObject, vm, "code point out of range"_s);
+        return throwException(globalObject, scope, error);
+    }
+
+    StringBuilder builder;
+    if (U_IS_BMP(codePoint)) {
+        builder.append(static_cast<UChar>(codePoint));
+    } else {
+        builder.append(U16_LEAD(codePoint));
+        builder.append(U16_TRAIL(codePoint));
+    }
+    RELEASE_AND_RETURN(scope, jsString(vm, builder.toString()));
+}
+
+DEFINE_BUILTIN_ENTRY_R_I(wasmJsStringFromCodePoint, doFromCodePoint);
+DEFINE_BUILTIN_JS_ENTRY_R_I(wasmJsStringFromCodePointJS, doFromCodePoint);
 
 /**
  * See https://webassembly.github.io/js-string-builtins/js-api/#js-string-charCodeAt
@@ -569,14 +620,6 @@ WebAssemblyBuiltinSet WebAssemblyBuiltinSet::jsString()
 {
     WebAssemblyBuiltinSet builtinSet = WebAssemblyBuiltinSet("wasm:js-string");
     builtinSet.add(WebAssemblyBuiltin(
-        ASCIILiteral("hello"),
-        Wasm::TypeInformation::typeDefinitionForFunction(
-            { Wasm::externrefType() },
-            { }),
-        IMPLEMENTATION_POINTER(wasmJsStringHello),
-        nullptr
-    ));
-    builtinSet.add(WebAssemblyBuiltin(
         ASCIILiteral("cast"),
         Wasm::TypeInformation::typeDefinitionForFunction(
             { Wasm::externrefType() },
@@ -591,6 +634,22 @@ WebAssemblyBuiltinSet WebAssemblyBuiltinSet::jsString()
             { Wasm::externrefType() }),
         IMPLEMENTATION_POINTER(wasmJsStringTest),
         wasmJsStringTestJS
+    ));
+    builtinSet.add(WebAssemblyBuiltin(
+        ASCIILiteral("fromCharCode"),
+        Wasm::TypeInformation::typeDefinitionForFunction(
+            { Wasm::externrefType() },
+            { Wasm::Types::I32 }),
+        IMPLEMENTATION_POINTER(wasmJsStringFromCharCode),
+        wasmJsStringFromCharCodeJS
+    ));
+    builtinSet.add(WebAssemblyBuiltin(
+        ASCIILiteral("fromCodePoint"),
+        Wasm::TypeInformation::typeDefinitionForFunction(
+            { Wasm::externrefType() },
+            { Wasm::Types::I32 }),
+        IMPLEMENTATION_POINTER(wasmJsStringFromCodePoint),
+        wasmJsStringFromCodePointJS
     ));
     builtinSet.add(WebAssemblyBuiltin(
         ASCIILiteral("concat"),

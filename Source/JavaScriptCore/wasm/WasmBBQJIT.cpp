@@ -4300,6 +4300,12 @@ PartialResult WARN_UNUSED_RETURN BBQJIT::addCall(FunctionSpaceIndex functionInde
     if (m_info.isImportedFunctionFromFunctionIndexSpace(functionIndex)) {
         static_assert(sizeof(WasmOrJSImportableFunctionCallLinkInfo) * maxImports < std::numeric_limits<int32_t>::max());
         RELEASE_ASSERT(JSWebAssemblyInstance::offsetOfImportFunctionStub(functionIndex) < std::numeric_limits<int32_t>::max());
+
+        // TODO(vb): is this the right thing to do? is this the only place to fix? how do we arrange the same in omg?
+        m_jit.load64(Address(GPRInfo::wasmContextInstancePointer, JSWebAssemblyInstance::offsetOfBoxedWasmCalleeLoadLocation(functionIndex)), GPRInfo::wasmScratchGPR0);
+        m_jit.load64(Address(GPRInfo::wasmScratchGPR0), GPRInfo::wasmScratchGPR0);
+        m_jit.pushPair(GPRInfo::wasmContextInstancePointer, GPRInfo::wasmScratchGPR0);
+
         m_jit.call(Address(GPRInfo::wasmContextInstancePointer, JSWebAssemblyInstance::offsetOfImportFunctionStub(functionIndex)), WasmEntryPtrTag);
     } else {
         // Record the callee so the callee knows to look for it in updateCallsitesToCallUs.

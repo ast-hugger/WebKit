@@ -41,7 +41,7 @@ async function testCast() {
     (module
         (import "wasm:js-string" "cast" (func $builtin (param externref) (result externref)))
         (export "exported" (func $builtin))
-        (func (export "wrapper") (param $arg externref) (result externref)
+        (func (export "relay") (param $arg externref) (result externref)
             local.get $arg
             call $builtin
         )
@@ -55,7 +55,7 @@ async function testCast() {
         assert.throwsAny(fun, null);
     }
 
-    check(instance.exports.wrapper);
+    check(instance.exports.relay);
     check(instance.exports.exported);
 }
 
@@ -64,7 +64,7 @@ async function testTest() {
     (module
         (import "wasm:js-string" "test" (func $builtin (param externref) (result i32)))
         (export "exported" (func $builtin))
-        (func (export "wrapper") (param $arg externref) (result i32)
+        (func (export "relay") (param $arg externref) (result i32)
             local.get $arg
             call $builtin
         )
@@ -78,7 +78,55 @@ async function testTest() {
         assert.eq(0, fun(null));
     }
 
-    check(instance.exports.wrapper);
+    check(instance.exports.relay);
+    check(instance.exports.exported);
+}
+
+async function testFromCharCode() {
+    const wat = `
+    (module
+        (import "wasm:js-string" "fromCharCode" (func $builtin (param i32) (result externref)))
+        (export "exported" (func $builtin))
+        (func (export "relay") (param $arg i32) (result externref)
+            local.get $arg
+            call $builtin
+        )
+    )`;
+    const instance = await instantiate(wat);
+
+    function check(fun) {
+        assert.eq("a", fun(97));
+        assert.eq("c", fun(99));
+        assert.eq("\uFFFF", fun(0xFFFF));
+        assert.eq(fun(0x10000), fun(0x110000)); // out of range value coersion
+    }
+
+    check(instance.exports.relay);
+    check(instance.exports.exported);
+}
+
+async function testFromCodePoint() {
+    const wat = `
+    (module
+        (import "wasm:js-string" "fromCodePoint" (func $builtin (param i32) (result externref)))
+        (export "exported" (func $builtin))
+        (func (export "relay") (param $arg i32) (result externref)
+            local.get $arg
+            call $builtin
+        )
+    )`;
+    const instance = await instantiate(wat);
+
+    function check(fun) {
+        assert.eq("a", fun(97));
+        assert.eq("😀", fun(0x1F600));
+        assert.eq("\uFFFF", fun(0xFFFF));
+        assert.eq("\uD800", fun(0xD800)); // high surrogate, unusual standalone but valid
+        assert.eq("\uDC00", fun(0xDC00)); // low surrogate
+        assert.eq("\u0000", fun(0));
+        assert.throwsAny(fun, 0x110000); // out of range
+    }
+    check(instance.exports.relay);
     check(instance.exports.exported);
 }
 
@@ -88,7 +136,7 @@ async function testCharCodeAt() {
         (import "wasm:js-string" "charCodeAt" (func $builtin (param externref i32) (result i32)))
         (import "wasm:js-string" "concat" (func $concat (param externref externref) (result externref)))
         (export "exported" (func $builtin))
-        (func (export "wrapper") (param $arg externref) (param $len i32) (result i32)
+        (func (export "relay") (param $arg externref) (param $len i32) (result i32)
             local.get $arg
             local.get $len
             call $builtin
@@ -123,7 +171,7 @@ async function testCharCodeAt() {
         assert.throwsAny(fun, string, 6);
     }
 
-    check(instance.exports.wrapper);
+    check(instance.exports.relay);
     check(instance.exports.exported);
 }
 
@@ -133,7 +181,7 @@ async function testCodePointAt() {
         (import "wasm:js-string" "codePointAt" (func $builtin (param externref i32) (result i32)))
         (import "wasm:js-string" "concat" (func $concat (param externref externref) (result externref)))
         (export "exported" (func $builtin))
-        (func (export "wrapper") (param $arg externref) (param $len i32) (result i32)
+        (func (export "relay") (param $arg externref) (param $len i32) (result i32)
             local.get $arg
             local.get $len
             call $builtin
@@ -168,7 +216,7 @@ async function testCodePointAt() {
         assert.throwsAny(fun, string, 6);
     }
 
-    check(instance.exports.wrapper);
+    check(instance.exports.relay);
     check(instance.exports.exported);
 }
 
@@ -177,7 +225,7 @@ async function testConcat() {
     (module
         (import "wasm:js-string" "concat" (func $builtin (param externref externref) (result externref)))
         (export "exported" (func $builtin))
-        (func (export "wrapper") (param $left externref) (param $right externref) (result externref)
+        (func (export "relay") (param $left externref) (param $right externref) (result externref)
             local.get $left
             local.get $right
             call $builtin
@@ -193,7 +241,9 @@ async function testConcat() {
         assert.throwsAny(fun, 42, "foo");
     }
 
-    check(instance.exports.wrapper);
+    // for (let i = 0; i < 100; i++) {
+        check(instance.exports.relay);
+    // }
     check(instance.exports.exported);
 }
 
@@ -202,7 +252,7 @@ async function testLength() {
     (module
         (import "wasm:js-string" "length" (func $builtin (param externref) (result i32)))
         (export "exported" (func $builtin))
-        (func (export "wrapper") (param $arg externref) (result i32)
+        (func (export "relay") (param $arg externref) (result i32)
             local.get $arg
             call $builtin
         )
@@ -216,7 +266,7 @@ async function testLength() {
         assert.throwsAny(fun, null);
     }
 
-    check(instance.exports.wrapper);
+    check(instance.exports.relay);
     check(instance.exports.exported);
 }
 
@@ -226,7 +276,7 @@ async function testSubstring() {
         (import "wasm:js-string" "substring" (func $builtin (param externref i32 i32) (result externref)))
         (import "wasm:js-string" "concat" (func $concat (param externref externref) (result externref)))
         (export "exported" (func $builtin))
-        (func (export "wrapper") (param $string externref) (param $start i32) (param $end i32) (result externref)
+        (func (export "relay") (param $string externref) (param $start i32) (param $end i32) (result externref)
             local.get $string
             local.get $start
             local.get $end
@@ -277,7 +327,7 @@ async function testSubstring() {
         assert.eq("😀", fun("a😀", 1, 3));
     }
 
-    check(instance.exports.wrapper);
+    check(instance.exports.relay);
     check(instance.exports.exported);
 }
 
@@ -286,7 +336,7 @@ async function testEquals() {
     (module
         (import "wasm:js-string" "equals" (func $builtin (param externref externref) (result i32)))
         (export "exported" (func $builtin))
-        (func (export "wrapper") (param $left externref) (param $right externref) (result i32)
+        (func (export "relay") (param $left externref) (param $right externref) (result i32)
             local.get $left
             local.get $right
             call $builtin
@@ -306,7 +356,7 @@ async function testEquals() {
         assert.throwsAny(fun, 42, "foo");
     }
 
-    check(instance.exports.wrapper);
+    check(instance.exports.relay);
     check(instance.exports.exported);
 }
 
@@ -315,7 +365,7 @@ async function testCompare() {
     (module
         (import "wasm:js-string" "compare" (func $builtin (param externref externref) (result i32)))
         (export "exported" (func $builtin))
-        (func (export "wrapper") (param $left externref) (param $right externref) (result i32)
+        (func (export "relay") (param $left externref) (param $right externref) (result i32)
             local.get $left
             local.get $right
             call $builtin
@@ -329,7 +379,7 @@ async function testCompare() {
         assert.eq(-1, fun("bar", "foo"));
     }
 
-    check(instance.exports.wrapper);
+    check(instance.exports.relay);
     check(instance.exports.exported);
 }
 
@@ -352,11 +402,13 @@ async function testImportedStringConstants() {
 await assert.asyncTest(testInstantiation());
 await assert.asyncTest(testCast());
 await assert.asyncTest(testTest());
+await assert.asyncTest(testFromCharCode());
+await assert.asyncTest(testFromCodePoint());
 await assert.asyncTest(testCharCodeAt());
 await assert.asyncTest(testCodePointAt());
 await assert.asyncTest(testLength());
 await assert.asyncTest(testConcat());
-// await assert.asyncTest(testSubstring());
+await assert.asyncTest(testSubstring());
 await assert.asyncTest(testEquals());
 await assert.asyncTest(testCompare());
 await assert.asyncTest(testImportedStringConstants());
