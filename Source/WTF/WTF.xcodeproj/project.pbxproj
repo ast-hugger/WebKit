@@ -90,6 +90,7 @@
 		1CFD5D3D2851AB3E00A0E30B /* EnumeratedArray.h in Headers */ = {isa = PBXBuildFile; fileRef = 1CFD5D3B2851AB3E00A0E30B /* EnumeratedArray.h */; settings = {ATTRIBUTES = (Private, ); }; };
 		1FA47C8A152502DA00568D1B /* WebCoreThread.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1FA47C88152502DA00568D1B /* WebCoreThread.cpp */; };
 		231829062EF0B0D00078588C /* MemoryDump.h in Headers */ = {isa = PBXBuildFile; fileRef = 231829052EF0B0D00078588C /* MemoryDump.h */; settings = {ATTRIBUTES = (Private, ); }; };
+		23626E7D2F42D7330007FAB7 /* InlineMap.h in Headers */ = {isa = PBXBuildFile; fileRef = 23626E7C2F42D7330007FAB7 /* InlineMap.h */; settings = {ATTRIBUTES = (Private, ); }; };
 		27C793CF2C40909D000E1BE8 /* PlatformEnableWin.h in Headers */ = {isa = PBXBuildFile; fileRef = 27C793CE2C40909D000E1BE8 /* PlatformEnableWin.h */; };
 		2A0CF001302E77880086000B /* CFTypeTraits.h in Headers */ = {isa = PBXBuildFile; fileRef = 2A0CF001302E77880086000A /* CFTypeTraits.h */; settings = {ATTRIBUTES = (Private, ); }; };
 		2B70468D2C6BC5F600318C0A /* StdMultimap.h in Headers */ = {isa = PBXBuildFile; fileRef = 2B70468C2C6BC5F600318C0A /* StdMultimap.h */; settings = {ATTRIBUTES = (Private, ); }; };
@@ -1281,6 +1282,7 @@
 		1FA47C88152502DA00568D1B /* WebCoreThread.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = WebCoreThread.cpp; sourceTree = "<group>"; };
 		1FA47C89152502DA00568D1B /* WebCoreThread.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = WebCoreThread.h; sourceTree = "<group>"; };
 		231829052EF0B0D00078588C /* MemoryDump.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = MemoryDump.h; sourceTree = "<group>"; };
+		23626E7C2F42D7330007FAB7 /* InlineMap.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = InlineMap.h; sourceTree = "<group>"; };
 		24F1B248619F412296D1C19C /* RandomDevice.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = RandomDevice.h; sourceTree = "<group>"; };
 		26147B0815DDCCDC00DDB907 /* IntegerToStringConversion.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = IntegerToStringConversion.h; sourceTree = "<group>"; };
 		26299B6D17A9E5B800ADEBE5 /* Ref.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Ref.h; sourceTree = "<group>"; };
@@ -2488,6 +2490,7 @@
 				3137E1D7DBD84AC38FAE4D34 /* IndexSet.h */,
 				2684D4351C000D400081D663 /* IndexSparseSet.h */,
 				A8A472BC151A825A004123FF /* InlineASM.h */,
+				23626E7C2F42D7330007FAB7 /* InlineMap.h */,
 				146C6C1C2ED51D9400956BE7 /* InlineWeakPtr.h */,
 				146C6C1E2ED51D9C00956BE7 /* InlineWeakRef.h */,
 				A70DA0821799F04D00529A9B /* Insertion.h */,
@@ -3641,6 +3644,7 @@
 				DD3DC93F27A4BF8E007E5B61 /* IndexSet.h in Headers */,
 				DD3DC96627A4BF8E007E5B61 /* IndexSparseSet.h in Headers */,
 				DD3DC97227A4BF8E007E5B61 /* InlineASM.h in Headers */,
+				23626E7D2F42D7330007FAB7 /* InlineMap.h in Headers */,
 				146C6C1D2ED51D9400956BE7 /* InlineWeakPtr.h in Headers */,
 				146C6C1F2ED51D9C00956BE7 /* InlineWeakRef.h in Headers */,
 				DD3DC91327A4BF8E007E5B61 /* Insertion.h in Headers */,

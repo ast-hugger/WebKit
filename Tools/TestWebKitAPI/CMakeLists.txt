@@ -62,6 +62,7 @@ set(TestWTF_SOURCES
     Tests/WTF/Hasher.cpp
     Tests/WTF/HexNumber.cpp
     Tests/WTF/IndexSparseSet.cpp
+    Tests/WTF/InlineMap.cpp
     Tests/WTF/Int128.cpp
     Tests/WTF/IntegerToStringConversion.cpp
     Tests/WTF/IntervalSet.cpp

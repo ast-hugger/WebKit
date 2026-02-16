@@ -135,6 +135,7 @@
 		1FEF15102D7A2AA900D29B57 /* SkipAdInPictureInPicture.html in Copy Resources */ = {isa = PBXBuildFile; fileRef = 1FEF150F2D7A2A9800D29B57 /* SkipAdInPictureInPicture.html */; };
 		1FEF15112D7B69DB00D29B57 /* SkipAdInPictureInPicture.mm in Sources */ = {isa = PBXBuildFile; fileRef = 1FEF15072D7A151900D29B57 /* SkipAdInPictureInPicture.mm */; };
 		231829092EF0E3140078588C /* MemoryDump.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 231829082EF0E3140078588C /* MemoryDump.cpp */; };
+		23626E742F42D45A0007FAB7 /* InlineMap.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 23626E732F42D45A0007FAB7 /* InlineMap.cpp */; };
 		23CB493B2DFEAD81006E424B /* PreciseSum.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 23CB493A2DFEAD7B006E424B /* PreciseSum.cpp */; };
 		272A691022F012DA000FDABB /* PageLoadState.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 272A690F22F012C7000FDABB /* PageLoadState.cpp */; };
 		278E3E1923CD842F005A6B80 /* KeyedCoding.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 278E3E1823CD82FA005A6B80 /* KeyedCoding.cpp */; };
@@ -2686,6 +2687,7 @@
 		1FEF15072D7A151900D29B57 /* SkipAdInPictureInPicture.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = SkipAdInPictureInPicture.mm; sourceTree = "<group>"; };
 		1FEF150F2D7A2A9800D29B57 /* SkipAdInPictureInPicture.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; path = SkipAdInPictureInPicture.html; sourceTree = "<group>"; };
 		231829082EF0E3140078588C /* MemoryDump.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = MemoryDump.cpp; sourceTree = "<group>"; };
+		23626E732F42D45A0007FAB7 /* InlineMap.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = InlineMap.cpp; sourceTree = "<group>"; };
 		23CB493A2DFEAD7B006E424B /* PreciseSum.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = PreciseSum.cpp; sourceTree = "<group>"; };
 		260BA5781B1D2E7B004FA07C /* DFACombiner.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DFACombiner.cpp; sourceTree = "<group>"; };
 		260BA57A1B1D2EE2004FA07C /* DFAHelpers.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = DFAHelpers.h; sourceTree = "<group>"; };
@@ -6543,6 +6545,7 @@
 				26B2DFF815BDE599004F691D /* HashSet.cpp */,
 				7C8BFF7023C0106700C009B3 /* HexNumber.cpp */,
 				33976D8224DC479B00812304 /* IndexSparseSet.cpp */,
+				23626E732F42D45A0007FAB7 /* InlineMap.cpp */,
 				F6D67D3626F90206006E0349 /* Int128.cpp */,
 				266FAFD215E5775200F61D5B /* IntegerToStringConversion.cpp */,
 				A4EC3A782E305163002E3744 /* IntervalSet.cpp */,
@@ -7733,6 +7736,7 @@
 				7C83DED41D0A590C00FEBCF3 /* HashSet.cpp in Sources */,
 				7C8BFF7123C0107A00C009B3 /* HexNumber.cpp in Sources */,
 				33976D8324DC479B00812304 /* IndexSparseSet.cpp in Sources */,
+				23626E742F42D45A0007FAB7 /* InlineMap.cpp in Sources */,
 				F6D67D3826F90206006E0349 /* Int128.cpp in Sources */,
 				7C83DEE01D0A590C00FEBCF3 /* IntegerToStringConversion.cpp in Sources */,
 				A4EC3A792E305163002E3744 /* IntervalSet.cpp in Sources */,

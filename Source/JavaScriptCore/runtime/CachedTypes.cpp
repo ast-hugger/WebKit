@@ -43,6 +43,7 @@
 #include "UnlinkedModuleProgramCodeBlock.h"
 #include "UnlinkedProgramCodeBlock.h"
 #include <wtf/FileHandle.h>
+#include <wtf/InlineMap.h>
 #include <wtf/MallocPtr.h>
 #include <wtf/MallocSpan.h>
 #include <wtf/Packed.h>
@@ -701,6 +702,35 @@ private:
 template<typename Key, typename Value, typename HashArg = DefaultHash<SourceType<Key>>, typename KeyTraitsArg = HashTraits<SourceType<Key>>, typename MappedTraitsArg = HashTraits<SourceType<Value>>>
 using CachedMemoryCompactLookupOnlyRobinHoodHashMap = CachedHashMap<Key, Value, HashArg, KeyTraitsArg, MappedTraitsArg, WTF::MemoryCompactLookupOnlyRobinHoodHashTableTraits>;
 
+template<typename Key, typename Value, typename HashArg = DefaultHash<SourceType<Key>>, typename KeyTraitsArg = HashTraits<SourceType<Key>>, typename MappedTraitsArg = HashTraits<SourceType<Value>>, unsigned Capacity = VariableEnvironment::inlineMapCapacity>
+class CachedInlineMap : public VariableLengthObject<InlineMap<SourceType<Key>, SourceType<Value>, HashArg, KeyTraitsArg, MappedTraitsArg, Capacity>> {
+
+    using Map = InlineMap<SourceType<Key>, SourceType<Value>, HashArg, KeyTraitsArg, MappedTraitsArg, Capacity>;
+
+public:
+
+    void encode(Encoder& encoder, const Map& map)
+    {
+        SourceType<decltype(m_entries)> entriesVector(map.size());
+        unsigned i = 0;
+        for (const auto& it : map)
+            entriesVector[i++] = { it.key, it.value };
+        m_entries.encode(encoder, entriesVector);
+    }
+
+    void decode(Decoder& decoder, Map& map) const
+    {
+        SourceType<decltype(m_entries)> decodedEntries;
+        m_entries.decode(decoder, decodedEntries);
+        map.reserveInitialCapacity(decodedEntries.size());
+        for (const auto& pair : decodedEntries)
+            map.add(pair.first, pair.second);
+    }
+
+private:
+    CachedVector<CachedPair<Key, Value>> m_entries;
+};
+
 template<typename T>
 class CachedUniquedStringImplBase : public VariableLengthObject<T> {
 public:
@@ -1088,7 +1118,7 @@ public:
 
 private:
     bool m_isEverythingCaptured;
-    CachedHashMap<CachedRefPtr<CachedUniquedStringImpl, UniquedStringImpl, WTF::PackedPtrTraits<UniquedStringImpl>>, VariableEnvironmentEntry, IdentifierRepHash, HashTraits<RefPtr<UniquedStringImpl>>, VariableEnvironmentEntryHashTraits> m_map;
+    CachedInlineMap<CachedRefPtr<CachedUniquedStringImpl, UniquedStringImpl, WTF::PackedPtrTraits<UniquedStringImpl>>, VariableEnvironmentEntry, IdentifierRepHash, HashTraits<RefPtr<UniquedStringImpl>>, VariableEnvironmentEntryHashTraits, VariableEnvironment::inlineMapCapacity> m_map;
     CachedPtr<CachedVariableEnvironmentRareData> m_rareData;
 };
 
