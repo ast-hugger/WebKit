@@ -1195,6 +1195,7 @@ wasm/WasmOpcodeOrigin.cpp
 wasm/WasmOperations.cpp
 wasm/WasmPlan.cpp
 wasm/WasmSectionParser.cpp
+wasm/WasmGCType.cpp
 wasm/WasmTypeDefinition.cpp
 wasm/WasmOpcodeCounter.cpp
 wasm/WasmSourceMappingURLSectionParser.cpp

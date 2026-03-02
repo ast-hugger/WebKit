@@ -166,6 +166,7 @@ if (ENABLE_JAVASCRIPTCORE)
         Tests/JavaScriptCore/DisallowVMEntry.cpp
         Tests/JavaScriptCore/InspectorConsoleMessage.cpp
         Tests/JavaScriptCore/PropertySlot.cpp
+        Tests/JavaScriptCore/WasmGCType.cpp
     )
 
     set(TestJavaScriptCore_LIBRARIES

@@ -135,6 +135,7 @@
 		1FEF15102D7A2AA900D29B57 /* SkipAdInPictureInPicture.html in Copy Resources */ = {isa = PBXBuildFile; fileRef = 1FEF150F2D7A2A9800D29B57 /* SkipAdInPictureInPicture.html */; };
 		1FEF15112D7B69DB00D29B57 /* SkipAdInPictureInPicture.mm in Sources */ = {isa = PBXBuildFile; fileRef = 1FEF15072D7A151900D29B57 /* SkipAdInPictureInPicture.mm */; };
 		231829092EF0E3140078588C /* MemoryDump.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 231829082EF0E3140078588C /* MemoryDump.cpp */; };
+		23C38EB42F55438C00365EF9 /* WasmGCType.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 23C38EB32F55438C00365EF9 /* WasmGCType.cpp */; };
 		23CB493B2DFEAD81006E424B /* PreciseSum.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 23CB493A2DFEAD7B006E424B /* PreciseSum.cpp */; };
 		272A691022F012DA000FDABB /* PageLoadState.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 272A690F22F012C7000FDABB /* PageLoadState.cpp */; };
 		278E3E1923CD842F005A6B80 /* KeyedCoding.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 278E3E1823CD82FA005A6B80 /* KeyedCoding.cpp */; };
@@ -2686,6 +2687,7 @@
 		1FEF15072D7A151900D29B57 /* SkipAdInPictureInPicture.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = SkipAdInPictureInPicture.mm; sourceTree = "<group>"; };
 		1FEF150F2D7A2A9800D29B57 /* SkipAdInPictureInPicture.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; path = SkipAdInPictureInPicture.html; sourceTree = "<group>"; };
 		231829082EF0E3140078588C /* MemoryDump.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = MemoryDump.cpp; sourceTree = "<group>"; };
+		23C38EB32F55438C00365EF9 /* WasmGCType.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = WasmGCType.cpp; sourceTree = "<group>"; };
 		23CB493A2DFEAD7B006E424B /* PreciseSum.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = PreciseSum.cpp; sourceTree = "<group>"; };
 		260BA5781B1D2E7B004FA07C /* DFACombiner.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DFACombiner.cpp; sourceTree = "<group>"; };
 		260BA57A1B1D2EE2004FA07C /* DFAHelpers.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = DFAHelpers.h; sourceTree = "<group>"; };
@@ -4846,6 +4848,7 @@
 				FEC2A85324CE974E00ADBC35 /* DisallowVMEntry.cpp */,
 				14CC42E524B8D8FA00E64F48 /* JSRunLoopTimer.mm */,
 				FEC2A85524CEB65F00ADBC35 /* PropertySlot.cpp */,
+				23C38EB32F55438C00365EF9 /* WasmGCType.cpp */,
 			);
 			path = JavaScriptCore;
 			sourceTree = "<group>";
@@ -8321,6 +8324,7 @@
 				115EB3431EE0BA03003C2C0A /* ViewportSizeForViewportUnits.mm in Sources */,
 				51EB125724C67257000CB030 /* VirtualGamepad.mm in Sources */,
 				6D51E1D72D42B17600032ECE /* VisualViewport.mm in Sources */,
+				23C38EB42F55438C00365EF9 /* WasmGCType.cpp in Sources */,
 				0F139E771A423A5B00F590F5 /* WeakObjCPtr.mm in Sources */,
 				7CCE7F191A411AE600447C4C /* WebArchive.cpp in Sources */,
 				7C83E04C1D0A641800FEBCF3 /* WebCoreNSURLSession.mm in Sources */,
