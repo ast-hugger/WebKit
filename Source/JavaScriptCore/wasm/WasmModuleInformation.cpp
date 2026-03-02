@@ -25,6 +25,7 @@
 
 #include "config.h"
 #include "WasmModuleInformation.h"
+#include "WasmGCTypeRegistry.h"
 #include "WebAssemblyBuiltin.h"
 #include "WebAssemblyCompileOptions.h"
 
@@ -47,7 +48,11 @@ ModuleInformation::ModuleInformation()
 #endif
 }
 
-ModuleInformation::~ModuleInformation() = default;
+ModuleInformation::~ModuleInformation()
+{
+    if (gcTypeRootSet)
+        WasmGCTypeRegistry::singleton().deregisterRootSet(gcTypeRootSet.get());
+}
 
 // This is called during module creation, so at this point we have fully isolated access
 // to this ModuleInformation object.

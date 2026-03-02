@@ -1196,6 +1196,7 @@ wasm/WasmOperations.cpp
 wasm/WasmPlan.cpp
 wasm/WasmSectionParser.cpp
 wasm/WasmGCType.cpp
+wasm/WasmGCTypeBuilder.cpp
 wasm/WasmGCTypeRegistry.cpp
 wasm/WasmTypeDefinition.cpp
 wasm/WasmOpcodeCounter.cpp

@@ -40,6 +40,7 @@ namespace JSC { namespace Wasm {
 
 class WasmGCTypeRootSet {
     WTF_MAKE_NONCOPYABLE(WasmGCTypeRootSet);
+    WTF_DEPRECATED_MAKE_FAST_ALLOCATED(WasmGCTypeRootSet);
 public:
     WasmGCTypeRootSet() = default;
 

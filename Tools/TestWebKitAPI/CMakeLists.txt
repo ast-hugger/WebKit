@@ -167,6 +167,7 @@ if (ENABLE_JAVASCRIPTCORE)
         Tests/JavaScriptCore/InspectorConsoleMessage.cpp
         Tests/JavaScriptCore/PropertySlot.cpp
         Tests/JavaScriptCore/WasmGCType.cpp
+        Tests/JavaScriptCore/WasmGCTypeBuilder.cpp
         Tests/JavaScriptCore/WasmGCTypeRegistry.cpp
     )
 

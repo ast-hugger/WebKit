@@ -36,6 +36,8 @@
 
 namespace JSC { namespace Wasm {
 
+class WasmGCType;
+
 class SectionParser final : public Parser<void> {
 public:
     SectionParser(std::span<const uint8_t> data, size_t offsetInSource, ModuleInformation& info)
@@ -78,6 +80,15 @@ private:
     [[nodiscard]] PartialResult parseArrayType(uint32_t position, RefPtr<TypeDefinition>&);
     [[nodiscard]] PartialResult parseRecursionGroup(uint32_t position, RefPtr<TypeDefinition>&);
     [[nodiscard]] PartialResult parseSubtype(uint32_t position, RefPtr<TypeDefinition>&, Vector<TypeIndex>&, bool);
+
+    [[nodiscard]] PartialResult parseGCFunctionType(uint32_t position, WasmGCType*& result);
+    [[nodiscard]] PartialResult parseGCStructType(uint32_t position, WasmGCType*& result);
+    [[nodiscard]] PartialResult parseGCArrayType(uint32_t position, WasmGCType*& result);
+    [[nodiscard]] PartialResult parseGCSubtype(uint32_t position, WasmGCType*& result, WasmGCType*& supertype, Vector<WasmGCType*>& groupTypes);
+    [[nodiscard]] PartialResult parseGCRecursionGroup(uint32_t position);
+    [[nodiscard]] PartialResult processGCTypeGroup(std::span<WasmGCType*> groupTypes, std::span<WasmGCType*> supertypes, std::span<bool> isFinalFlags);
+    static bool checkGCStructuralSubtype(const WasmGCType& subtype, const WasmGCType& supertype);
+    [[nodiscard]] PartialResult checkGCSubtypeValidity(const WasmGCType* type);
 
     [[nodiscard]] PartialResult validateElementTableIdx(uint32_t, Type);
     [[nodiscard]] PartialResult parseI32InitExprForElementSection(std::optional<I32InitExpr>&);

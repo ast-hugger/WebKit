@@ -32,6 +32,7 @@
 #include "SIMDInfo.h"
 #include "VirtualRegister.h"
 #include "WasmFormat.h"
+#include "WasmGCTypeBuilder.h"
 #include "WasmLimits.h"
 #include "WasmModuleInformation.h"
 #include "WasmOps.h"
@@ -101,6 +102,7 @@ protected:
     [[nodiscard]] bool parseHeapType(const ModuleInformation&, int32_t&);
 
     size_t m_offset = 0;
+    Vector<WasmGCType*>* m_gcGroupTypes { nullptr };
 
     template <typename ...Args>
     [[nodiscard]] NEVER_INLINE UnexpectedResult fail(Args... args) const
@@ -315,7 +317,8 @@ ALWAYS_INLINE bool ParserBase::parseHeapType(const ModuleInformation& info, int3
         return false;
     }
 
-    if (static_cast<size_t>(heapType) >= info.typeCount() && (!m_recursionGroupInformation.inRecursionGroup || !(static_cast<uint32_t>(heapType) >= m_recursionGroupInformation.start && static_cast<uint32_t>(heapType) < m_recursionGroupInformation.end)))
+    size_t knownTypeCount = m_gcGroupTypes ? info.gcTypeSignatures.size() : info.typeCount();
+    if (static_cast<size_t>(heapType) >= knownTypeCount && (!m_recursionGroupInformation.inRecursionGroup || !(static_cast<uint32_t>(heapType) >= m_recursionGroupInformation.start && static_cast<uint32_t>(heapType) < m_recursionGroupInformation.end)))
         return false;
 
     result = heapType;
@@ -342,18 +345,36 @@ ALWAYS_INLINE bool ParserBase::parseValueType(const ModuleInformation& info, Typ
         if (heapType < 0)
             typeIndex = static_cast<TypeIndex>(heapType);
         else {
-            // For recursive references inside recursion groups, we construct a
-            // placeholder projection with an invalid group index. These should
-            // be replaced with a real type index in expand() before use.
-            if (m_recursionGroupInformation.inRecursionGroup && static_cast<uint32_t>(heapType) >= m_recursionGroupInformation.start) {
-                ASSERT(static_cast<uint32_t>(heapType) >= info.typeCount() && static_cast<uint32_t>(heapType) < m_recursionGroupInformation.end);
-                ProjectionIndex groupIndex = static_cast<ProjectionIndex>(heapType - m_recursionGroupInformation.start);
-                RefPtr<TypeDefinition> def = TypeInformation::getPlaceholderProjection(groupIndex);
-                RELEASE_ASSERT(def->refCount() > 2); // tbl + RefPtr + owner
-                typeIndex = def->index(); // Owned by TypeInformation placeholder projections singleton.
+            if (m_gcGroupTypes) {
+                // GC type system path: resolve via gcTypeSignatures or placeholders.
+                if (m_recursionGroupInformation.inRecursionGroup && static_cast<uint32_t>(heapType) >= m_recursionGroupInformation.start) {
+                    uint32_t groupRelIdx = static_cast<uint32_t>(heapType) - m_recursionGroupInformation.start;
+                    if (groupRelIdx < m_gcGroupTypes->size() && (*m_gcGroupTypes)[groupRelIdx]) {
+                        // Backward or self reference: use actual pointer.
+                        typeIndex = (*m_gcGroupTypes)[groupRelIdx]->index();
+                    } else {
+                        // Forward reference: use placeholder.
+                        typeIndex = WasmGCTypeBuilder::placeholderForGroupIndex(groupRelIdx);
+                    }
+                } else {
+                    ASSERT(static_cast<uint32_t>(heapType) < info.gcTypeSignatures.size());
+                    typeIndex = info.gcTypeSignatures[heapType]->index();
+                }
             } else {
-                ASSERT(static_cast<uint32_t>(heapType) < info.typeCount());
-                typeIndex = TypeInformation::get(info.typeSignatures[heapType].get());
+                // Legacy TypeDefinition path.
+                // For recursive references inside recursion groups, we construct a
+                // placeholder projection with an invalid group index. These should
+                // be replaced with a real type index in expand() before use.
+                if (m_recursionGroupInformation.inRecursionGroup && static_cast<uint32_t>(heapType) >= m_recursionGroupInformation.start) {
+                    ASSERT(static_cast<uint32_t>(heapType) >= info.typeCount() && static_cast<uint32_t>(heapType) < m_recursionGroupInformation.end);
+                    ProjectionIndex groupIndex = static_cast<ProjectionIndex>(heapType - m_recursionGroupInformation.start);
+                    RefPtr<TypeDefinition> def = TypeInformation::getPlaceholderProjection(groupIndex);
+                    RELEASE_ASSERT(def->refCount() > 2); // tbl + RefPtr + owner
+                    typeIndex = def->index(); // Owned by TypeInformation placeholder projections singleton.
+                } else {
+                    ASSERT(static_cast<uint32_t>(heapType) < info.typeCount());
+                    typeIndex = TypeInformation::get(info.typeSignatures[heapType].get());
+                }
             }
         }
     }

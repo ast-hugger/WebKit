@@ -42,6 +42,9 @@ class WebAssemblyCompileOptions;
 
 namespace Wasm {
 
+class WasmGCType;
+class WasmGCTypeRootSet;
+
 struct ModuleInformation final : public ThreadSafeRefCounted<ModuleInformation> {
 
     using BranchHints = UncheckedKeyHashMap<uint32_t, BranchHintMap, IntHash<uint32_t>, WTF::UnsignedWithZeroKeyHashTraits<uint32_t>>;
@@ -225,6 +228,8 @@ struct ModuleInformation final : public ThreadSafeRefCounted<ModuleInformation> 
     BranchHints branchHints;
     std::optional<uint32_t> numberOfDataSegments;
     Vector<Ref<const RTT>> rtts;
+    Vector<WasmGCType*> gcTypeSignatures;
+    std::unique_ptr<WasmGCTypeRootSet> gcTypeRootSet;
     Vector<Vector<uint8_t>> constantExpressions;
     Name sourceMappingURL;
 #if ENABLE(WEBASSEMBLY_DEBUGGER)

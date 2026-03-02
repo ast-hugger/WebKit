@@ -819,6 +819,7 @@
 		23D7A3E22F3D0F4C00A27B88 /* JSPIContext.h in Headers */ = {isa = PBXBuildFile; fileRef = 23D7A3E02F3D0F4C00A27B88 /* JSPIContext.h */; settings = {ATTRIBUTES = (Private, ); }; };
 		23D7A3E32F3D0F4C00A27B88 /* JSPIContextInlines.h in Headers */ = {isa = PBXBuildFile; fileRef = 23D7A3E12F3D0F4C00A27B88 /* JSPIContextInlines.h */; settings = {ATTRIBUTES = (Private, ); }; };
 		23C38EC82F55E13A00365EF9 /* WasmGCTypeRegistry.h in Headers */ = {isa = PBXBuildFile; fileRef = 23C38EC62F55E13A00365EF9 /* WasmGCTypeRegistry.h */; settings = {ATTRIBUTES = (Private, ); }; };
+		23C38ECE2F5613BC00365EF9 /* WasmGCTypeBuilder.h in Headers */ = {isa = PBXBuildFile; fileRef = 23C38ECB2F5613BC00365EF9 /* WasmGCTypeBuilder.h */; settings = {ATTRIBUTES = (Private, ); }; };
 		2600B5A7152BAAA70091EE5F /* JSStringJoiner.h in Headers */ = {isa = PBXBuildFile; fileRef = 2600B5A5152BAAA70091EE5F /* JSStringJoiner.h */; };
 		262D85B71C0D650F006ACB61 /* AirFixPartialRegisterStalls.h in Headers */ = {isa = PBXBuildFile; fileRef = 262D85B51C0D650F006ACB61 /* AirFixPartialRegisterStalls.h */; };
 		2684D4381C00161C0081D663 /* AirLiveness.h in Headers */ = {isa = PBXBuildFile; fileRef = 2684D4371C00161C0081D663 /* AirLiveness.h */; };
@@ -4019,6 +4020,8 @@
 		23D7A3E12F3D0F4C00A27B88 /* JSPIContextInlines.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = JSPIContextInlines.h; sourceTree = "<group>"; };
 		23C38EC62F55E13A00365EF9 /* WasmGCTypeRegistry.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = WasmGCTypeRegistry.h; sourceTree = "<group>"; };
 		23C38EC72F55E13A00365EF9 /* WasmGCTypeRegistry.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = WasmGCTypeRegistry.cpp; sourceTree = "<group>"; };
+		23C38ECB2F5613BC00365EF9 /* WasmGCTypeBuilder.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = WasmGCTypeBuilder.h; sourceTree = "<group>"; };
+		23C38ECC2F5613BC00365EF9 /* WasmGCTypeBuilder.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = WasmGCTypeBuilder.cpp; sourceTree = "<group>"; };
 		2600B5A4152BAAA70091EE5F /* JSStringJoiner.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = JSStringJoiner.cpp; sourceTree = "<group>"; };
 		2600B5A5152BAAA70091EE5F /* JSStringJoiner.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = JSStringJoiner.h; sourceTree = "<group>"; };
 		262D85B41C0D650F006ACB61 /* AirFixPartialRegisterStalls.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = AirFixPartialRegisterStalls.cpp; path = b3/air/AirFixPartialRegisterStalls.cpp; sourceTree = "<group>"; };
@@ -8225,6 +8228,8 @@
 				53F40E8A1D5901BB0099A1B6 /* WasmFunctionParser.h */,
 				23C38EB02F5528A900365EF9 /* WasmGCType.cpp */,
 				23C38EAF2F5528A900365EF9 /* WasmGCType.h */,
+				23C38ECC2F5613BC00365EF9 /* WasmGCTypeBuilder.cpp */,
+				23C38ECB2F5613BC00365EF9 /* WasmGCTypeBuilder.h */,
 				23C38EC72F55E13A00365EF9 /* WasmGCTypeRegistry.cpp */,
 				23C38EC62F55E13A00365EF9 /* WasmGCTypeRegistry.h */,
 				E38350082390D9370036316D /* WasmGlobal.cpp */,
@@ -12549,6 +12554,7 @@
 				F323932D2A43748000421AD2 /* WasmFunctionIPIntMetadataGenerator.h in Headers */,
 				53F40E8B1D5901BB0099A1B6 /* WasmFunctionParser.h in Headers */,
 				23C38EB12F5528C300365EF9 /* WasmGCType.h in Headers */,
+				23C38ECE2F5613BC00365EF9 /* WasmGCTypeBuilder.h in Headers */,
 				23C38EC82F55E13A00365EF9 /* WasmGCTypeRegistry.h in Headers */,
 				FFBF548A2F189712008F124F /* WasmGDBPacketParser.h in Headers */,
 				E383500A2390D93B0036316D /* WasmGlobal.h in Headers */,

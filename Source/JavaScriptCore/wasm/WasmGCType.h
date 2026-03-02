@@ -49,6 +49,7 @@ namespace JSC { namespace Wasm {
 class WasmGCFunctionType;
 class WasmGCStructType;
 class WasmGCArrayType;
+class WasmGCTypeBuilder;
 
 enum class WasmGCTypeKind : uint8_t {
     FunctionType,
@@ -144,6 +145,7 @@ private:
 class WasmGCStructType final : public WasmGCType {
     WTF_MAKE_NONCOPYABLE(WasmGCStructType);
     WTF_MAKE_NONMOVABLE(WasmGCStructType);
+    friend class WasmGCTypeBuilder;
 public:
     static constexpr WasmGCTypeKind kind = WasmGCTypeKind::StructType;
 
@@ -177,6 +179,7 @@ private:
 class WasmGCArrayType final : public WasmGCType {
     WTF_MAKE_NONCOPYABLE(WasmGCArrayType);
     WTF_MAKE_NONMOVABLE(WasmGCArrayType);
+    friend class WasmGCTypeBuilder;
 public:
     static constexpr WasmGCTypeKind kind = WasmGCTypeKind::ArrayType;
 

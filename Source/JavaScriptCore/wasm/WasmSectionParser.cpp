@@ -32,6 +32,9 @@
 #include "JSCJSValueInlines.h"
 #include "WasmBranchHintsSectionParser.h"
 #include "WasmConstExprGenerator.h"
+#include "WasmGCType.h"
+#include "WasmGCTypeBuilder.h"
+#include "WasmGCTypeRegistry.h"
 #include "WasmMemoryInformation.h"
 #include "WasmNameSectionParser.h"
 #include "WasmOps.h"
@@ -44,6 +47,69 @@
 
 namespace JSC { namespace Wasm {
 
+// GC-aware subtype checking for Type values where concrete type indices
+// may be WasmGCType pointers rather than TypeDefinition indices.
+static bool isGCSubtypeIndex(TypeIndex sub, TypeIndex parent)
+{
+    if (sub == parent)
+        return true;
+
+    auto* subType = std::bit_cast<WasmGCType*>(sub);
+    auto* parentType = std::bit_cast<WasmGCType*>(parent);
+    RELEASE_ASSERT(subType->m_rtt);
+    RELEASE_ASSERT(parentType->m_rtt);
+    return subType->m_rtt->isStrictSubRTT(*parentType->m_rtt);
+}
+
+static bool isGCSubtype(Type sub, Type parent)
+{
+    if (sub == parent)
+        return true;
+
+    if (sub.isNullable() && !parent.isNullable())
+        return false;
+
+    if (isRefWithTypeIndex(sub)) {
+        if (isRefWithTypeIndex(parent))
+            return isGCSubtypeIndex(sub.index, parent.index);
+
+        auto* subGCType = std::bit_cast<WasmGCType*>(sub.index);
+        if (isAnyref(parent) || isEqref(parent))
+            return !subGCType->is<WasmGCFunctionType>();
+        if (isArrayref(parent))
+            return subGCType->is<WasmGCArrayType>();
+        if (isStructref(parent))
+            return subGCType->is<WasmGCStructType>();
+        if (isFuncref(parent))
+            return subGCType->is<WasmGCFunctionType>();
+    }
+
+    if ((isI31ref(sub) || isStructref(sub) || isArrayref(sub)) && (isAnyref(parent) || isEqref(parent)))
+        return true;
+    if (isEqref(sub) && isAnyref(parent))
+        return true;
+    if (isNoneref(sub))
+        return isInternalref(parent);
+    if (isNofuncref(sub))
+        return isGCSubtype(parent, funcrefType());
+    if (isNoexternref(sub) && isExternref(parent))
+        return true;
+    if (isNoexnref(sub) && isExnref(parent))
+        return true;
+    if (sub.isRef() && parent.isRefNull())
+        return sub.index == parent.index;
+
+    return false;
+}
+
+static bool isGCSubtype(StorageType sub, StorageType parent)
+{
+    if (sub.is<PackedType>() || parent.is<PackedType>())
+        return sub == parent;
+    ASSERT(sub.is<Type>() && parent.is<Type>());
+    return isGCSubtype(sub.as<Type>(), parent.as<Type>());
+}
+
 auto SectionParser::parseType() -> PartialResult
 {
     uint32_t count;
@@ -51,81 +117,342 @@ auto SectionParser::parseType() -> PartialResult
 
     WASM_PARSER_FAIL_IF(!parseVarUInt32(count), "can't get Type section's count"_s);
     WASM_PARSER_FAIL_IF(count > maxTypes, "Type section's count is too big "_s, count, " maximum "_s, maxTypes);
-    RELEASE_ASSERT(!m_info->typeSignatures.capacity());
-    RELEASE_ASSERT(!m_info->rtts.capacity());
-    WASM_ALLOCATOR_FAIL_IF(!m_info->typeSignatures.tryReserveInitialCapacity(count), "can't allocate enough memory for Type section's "_s, count, " entries"_s);
-    WASM_ALLOCATOR_FAIL_IF(!m_info->rtts.tryReserveInitialCapacity(count), "can't allocate enough memory for Type section's "_s, count, " canonical RTT entries"_s);
+    WASM_ALLOCATOR_FAIL_IF(!m_info->gcTypeSignatures.tryReserveInitialCapacity(count), "can't allocate enough memory for Type section's "_s, count, " entries"_s);
+    m_info->gcTypeRootSet = makeUnique<WasmGCTypeRootSet>();
 
     for (uint32_t i = 0; i < count; ++i) {
         int8_t typeKind;
         WASM_PARSER_FAIL_IF(!parseInt7(typeKind), "can't get "_s, i, "th Type's type"_s);
-        RefPtr<TypeDefinition> signature;
-
-        // When GC is enabled, recursive references can show up in any of these cases.
-        SetForScope<RecursionGroupInformation> recursionGroupInfo(m_recursionGroupInformation, RecursionGroupInformation { true, m_info->typeCount(), m_info->typeCount() + 1 });
 
         switch (static_cast<TypeKind>(typeKind)) {
-        case TypeKind::Func: {
-            WASM_FAIL_IF_HELPER_FAILS(parseFunctionType(i, signature));
-            break;
-        }
-        case TypeKind::Struct: {
-            WASM_FAIL_IF_HELPER_FAILS(parseStructType(i, signature));
-            break;
-        }
-        case TypeKind::Array: {
-            WASM_FAIL_IF_HELPER_FAILS(parseArrayType(i, signature));
-            break;
-        }
         case TypeKind::Rec: {
-            WASM_FAIL_IF_HELPER_FAILS(parseRecursionGroup(i, signature));
+            WASM_FAIL_IF_HELPER_FAILS(parseGCRecursionGroup(i));
             ++recursionGroupCount;
             WASM_PARSER_FAIL_IF(recursionGroupCount > maxNumberOfRecursionGroups, "number of recursion groups exceeded the limit of "_s, maxNumberOfRecursionGroups);
             break;
         }
         case TypeKind::Sub:
         case TypeKind::Subfinal: {
-            Vector<TypeIndex> empty;
-            WASM_FAIL_IF_HELPER_FAILS(parseSubtype(i, signature, empty, static_cast<TypeKind>(typeKind) == TypeKind::Subfinal));
+            // Singleton group with explicit subtype declaration.
+            SetForScope<RecursionGroupInformation> recursionGroupInfo(m_recursionGroupInformation, RecursionGroupInformation { true, static_cast<uint32_t>(m_info->gcTypeSignatures.size()), static_cast<uint32_t>(m_info->gcTypeSignatures.size()) + 1 });
+
+            WasmGCType* gcType = nullptr;
+            WasmGCType* supertype = nullptr;
+            bool isFinal = (static_cast<TypeKind>(typeKind) == TypeKind::Subfinal);
+            Vector<WasmGCType*> groupTypes(1, nullptr);
+            SetForScope<Vector<WasmGCType*>*> groupScope(m_gcGroupTypes, &groupTypes);
+
+            WASM_FAIL_IF_HELPER_FAILS(parseGCSubtype(i, gcType, supertype, groupTypes));
+            WASM_PARSER_FAIL_IF(!gcType, "can't allocate enough memory for Type section's "_s, i, "th signature"_s);
+
+            groupTypes[0] = gcType;
+            WasmGCTypeBuilder::patchPlaceholders(groupTypes.mutableSpan());
+            gcType->setIsFinal(isFinal);
+            gcType->setSupertype(supertype);
+            WASM_FAIL_IF_HELPER_FAILS(processGCTypeGroup(groupTypes.mutableSpan(), { &supertype, 1 }, { &isFinal, 1 }));
+            break;
+        }
+        case TypeKind::Func:
+        case TypeKind::Struct:
+        case TypeKind::Array: {
+            // Singleton group (plain type, no subtype wrapper).
+            SetForScope<RecursionGroupInformation> recursionGroupInfo(m_recursionGroupInformation, RecursionGroupInformation { true, static_cast<uint32_t>(m_info->gcTypeSignatures.size()), static_cast<uint32_t>(m_info->gcTypeSignatures.size()) + 1 });
+
+            WasmGCType* gcType = nullptr;
+            Vector<WasmGCType*> groupTypes(1, nullptr);
+            SetForScope<Vector<WasmGCType*>*> groupScope(m_gcGroupTypes, &groupTypes);
+
+            switch (static_cast<TypeKind>(typeKind)) {
+            case TypeKind::Func:
+                WASM_FAIL_IF_HELPER_FAILS(parseGCFunctionType(i, gcType));
+                break;
+            case TypeKind::Struct:
+                WASM_FAIL_IF_HELPER_FAILS(parseGCStructType(i, gcType));
+                break;
+            case TypeKind::Array:
+                WASM_FAIL_IF_HELPER_FAILS(parseGCArrayType(i, gcType));
+                break;
+            default:
+                RELEASE_ASSERT_NOT_REACHED();
+            }
+            WASM_PARSER_FAIL_IF(!gcType, "can't allocate enough memory for Type section's "_s, i, "th signature"_s);
+
+            groupTypes[0] = gcType;
+            WasmGCTypeBuilder::patchPlaceholders(groupTypes.mutableSpan());
+
+            WasmGCType* noSupertype = nullptr;
+            bool isFinalFlag = true;
+            WASM_FAIL_IF_HELPER_FAILS(processGCTypeGroup(groupTypes.mutableSpan(), { &noSupertype, 1 }, { &isFinalFlag, 1 }));
             break;
         }
         default:
             return fail(i, "th Type is non-Func, non-Struct, and non-Array ", typeKind);
         }
+    }
 
-        WASM_PARSER_FAIL_IF(!signature, "can't allocate enough memory for Type section's "_s, i, "th signature"_s);
+    return { };
+}
 
-        // When GC is enabled, type definitions that appear on their own are shorthand
-        // notations for recursion groups with one type. Here we ensure that if such a
-        // shorthand type is actually recursive, it is represented with a recursion group.
-        // Subtyping checks are also done here to ensure sub types are subtypes of their parents.
-        // Recursion group parsing will append the entries itself, as there may
-        // be multiple entries that need to be added to the type section for
-        // each recursion group.
-        if (signature->is<RecursionGroup>())
-            m_info->recursionGroups.append(signature.releaseNonNull());
-        else {
-            if (signature->hasRecursiveReference()) {
-                Vector<TypeIndex> types;
-                bool result = types.tryAppend(signature->index());
-                WASM_PARSER_FAIL_IF(!result, "can't allocate enough memory for Type section's "_s, i, "th signature"_s);
-                // group takes ownership of signature via types, and projection takes ownership of group.
-                RefPtr<TypeDefinition> group = TypeInformation::typeDefinitionForRecursionGroup(types);
-                RefPtr<TypeDefinition> projection = TypeInformation::typeDefinitionForProjection(group->index(), 0);
-                signature = WTF::move(projection);
-            }
-            TypeInformation::registerCanonicalRTTForType(signature->index());
-            m_info->rtts.append(TypeInformation::getCanonicalRTT(signature->index()));
-            const TypeDefinition& unrolled = signature->unroll();
-            if (unrolled.is<Subtype>()) {
-                WASM_PARSER_FAIL_IF(m_info->rtts.last()->displaySizeExcludingThis() > maxSubtypeDepth, "subtype depth for Type section's "_s, i, "th signature exceeded the limits of "_s, maxSubtypeDepth);
-                WASM_FAIL_IF_HELPER_FAILS(checkSubtypeValidity(unrolled));
-            }
-            m_info->typeSignatures.append(signature.releaseNonNull());
+auto SectionParser::parseGCFunctionType(uint32_t position, WasmGCType*& result) -> PartialResult
+{
+    uint32_t argumentCount;
+    WASM_PARSER_FAIL_IF(!parseVarUInt32(argumentCount), "can't get Type's argument count at index "_s, position);
+    WASM_PARSER_FAIL_IF(argumentCount > maxFunctionParams, "argument count of Type at index "_s, position, " is too big "_s, argumentCount, " maximum "_s, maxFunctionParams);
+    Vector<Type, 16> argumentTypes;
+    WASM_ALLOCATOR_FAIL_IF(!argumentTypes.tryReserveInitialCapacity(argumentCount), "can't allocate enough memory for Type section's "_s, position, "th signature"_s);
+
+    argumentTypes.grow(argumentCount);
+    for (unsigned i = 0; i < argumentCount; ++i) {
+        Type argumentType;
+        WASM_PARSER_FAIL_IF(!parseValueType(m_info, argumentType), "can't get "_s, i, "th argument Type"_s);
+        argumentTypes[i] = argumentType;
+    }
+
+    uint32_t returnCount;
+    WASM_PARSER_FAIL_IF(!parseVarUInt32(returnCount), "can't get Type's return count at index "_s, position);
+    WASM_PARSER_FAIL_IF(returnCount > maxFunctionReturns, "return count of Type at index "_s, position, " is too big "_s, returnCount, " maximum "_s, maxFunctionReturns);
+
+    Vector<Type, 16> returnTypes;
+    WASM_ALLOCATOR_FAIL_IF(!returnTypes.tryReserveInitialCapacity(returnCount), "can't allocate enough memory for Type section's "_s, position, "th signature"_s);
+    returnTypes.grow(returnCount);
+    for (unsigned i = 0; i < returnCount; ++i) {
+        Type value;
+        WASM_PARSER_FAIL_IF(!parseValueType(m_info, value), "can't get "_s, i, "th Type's return value"_s);
+        returnTypes[i] = value;
+    }
+
+    auto* func = WasmGCFunctionType::tryCreate(returnCount, argumentCount);
+    WASM_PARSER_FAIL_IF(!func, "can't allocate GC function type"_s);
+    for (unsigned i = 0; i < returnCount; ++i)
+        func->getReturnType(i) = returnTypes[i];
+    for (unsigned i = 0; i < argumentCount; ++i)
+        func->getArgumentType(i) = argumentTypes[i];
+    result = func;
+    return { };
+}
+
+auto SectionParser::parseGCStructType(uint32_t position, WasmGCType*& result) -> PartialResult
+{
+    uint32_t fieldCount;
+    WASM_PARSER_FAIL_IF(!parseVarUInt32(fieldCount), "can't get "_s, position, "th struct type's field count"_s);
+    WASM_PARSER_FAIL_IF(fieldCount > maxStructFieldCount, "number of fields for struct type at position "_s, position, " is too big "_s, fieldCount, " maximum "_s, maxStructFieldCount);
+    Vector<FieldType> fields;
+    WASM_ALLOCATOR_FAIL_IF(!fields.tryReserveInitialCapacity(fieldCount), "can't allocate enough memory for struct fields "_s, fieldCount, " entries"_s);
+    fields.grow(fieldCount);
+
+    Checked<unsigned, RecordOverflow> structInstancePayloadSize { 0 };
+    for (uint32_t fieldIndex = 0; fieldIndex < fieldCount; ++fieldIndex) {
+        StorageType fieldType;
+        WASM_PARSER_FAIL_IF(!parseStorageType(fieldType), "can't get "_s, fieldIndex, "th field Type"_s);
+
+        uint8_t mutability;
+        WASM_PARSER_FAIL_IF(!parseUInt8(mutability), position, "can't get "_s, fieldIndex, "th field mutability"_s);
+        WASM_PARSER_FAIL_IF(mutability != 0x0 && mutability != 0x1, "invalid Field's mutability: 0x"_s, hex(mutability, 2, Lowercase));
+
+        fields[fieldIndex] = FieldType { fieldType, static_cast<Mutability>(mutability) };
+        structInstancePayloadSize += typeSizeInBytes(fieldType);
+        WASM_PARSER_FAIL_IF(structInstancePayloadSize.hasOverflowed(), "struct layout is too big"_s);
+    }
+
+    m_info->m_hasGCObjectTypes = true;
+    auto* structType = WasmGCStructType::tryCreate(fields);
+    WASM_PARSER_FAIL_IF(!structType, "can't allocate GC struct type"_s);
+    result = structType;
+    return { };
+}
+
+auto SectionParser::parseGCArrayType(uint32_t position, WasmGCType*& result) -> PartialResult
+{
+    StorageType elementType;
+    WASM_PARSER_FAIL_IF(!parseStorageType(elementType), "can't get array's element Type"_s);
+
+    uint8_t mutability;
+    WASM_PARSER_FAIL_IF(!parseUInt8(mutability), position, "can't get array's mutability"_s);
+    WASM_PARSER_FAIL_IF(mutability != 0x0 && mutability != 0x1, "invalid array mutability: 0x"_s, hex(mutability, 2, Lowercase));
+
+    m_info->m_hasGCObjectTypes = true;
+    auto* arrayType = WasmGCArrayType::tryCreate(FieldType { elementType, static_cast<Mutability>(mutability) });
+    WASM_PARSER_FAIL_IF(!arrayType, "can't allocate GC array type"_s);
+    result = arrayType;
+    return { };
+}
+
+auto SectionParser::parseGCSubtype(uint32_t position, WasmGCType*& gcType, WasmGCType*& supertype, Vector<WasmGCType*>& groupTypes) -> PartialResult
+{
+    uint32_t supertypeCount;
+    WASM_PARSER_FAIL_IF(!parseVarUInt32(supertypeCount), "can't get "_s, position, "th subtype's supertype count"_s);
+    WASM_PARSER_FAIL_IF(supertypeCount > maxSubtypeSupertypeCount, "number of supertypes for subtype at position "_s, position, " is too big "_s, supertypeCount, " maximum "_s, maxSubtypeSupertypeCount);
+
+    supertype = nullptr;
+    if (supertypeCount > 0) {
+        uint32_t typeIndex;
+        WASM_PARSER_FAIL_IF(!parseVarUInt32(typeIndex), "can't get subtype's supertype index"_s);
+        WASM_PARSER_FAIL_IF(typeIndex >= m_info->gcTypeSignatures.size() + groupTypes.size(), "supertype index is a forward reference"_s);
+        if (typeIndex < m_info->gcTypeSignatures.size())
+            supertype = m_info->gcTypeSignatures[typeIndex];
+        else
+            supertype = groupTypes[typeIndex - m_info->gcTypeSignatures.size()];
+        WASM_PARSER_FAIL_IF(!supertype, "supertype is a forward reference within the recursion group"_s);
+    }
+
+    int8_t typeKind;
+    WASM_PARSER_FAIL_IF(!parseInt7(typeKind), "can't get subtype's underlying Type's type"_s);
+    switch (static_cast<TypeKind>(typeKind)) {
+    case TypeKind::Func:
+        WASM_FAIL_IF_HELPER_FAILS(parseGCFunctionType(position, gcType));
+        break;
+    case TypeKind::Struct:
+        WASM_FAIL_IF_HELPER_FAILS(parseGCStructType(position, gcType));
+        break;
+    case TypeKind::Array:
+        WASM_FAIL_IF_HELPER_FAILS(parseGCArrayType(position, gcType));
+        break;
+    default:
+        return fail("invalid structural type definition for subtype "_s, typeKind);
+    }
+
+    // isFinal is set by the caller based on whether this is Sub or Subfinal.
+    // supertype is resolved above. The caller will set these on the WasmGCType object.
+
+    return { };
+}
+
+auto SectionParser::parseGCRecursionGroup(uint32_t position) -> PartialResult
+{
+    uint32_t typeCount;
+    WASM_PARSER_FAIL_IF(!parseVarUInt32(typeCount), "can't get "_s, position, "th recursion group's type count"_s);
+    WASM_PARSER_FAIL_IF(typeCount > maxRecursionGroupCount, "number of types for recursion group at position "_s, position, " is too big "_s, typeCount, " maximum "_s, maxRecursionGroupCount);
+
+    SetForScope<RecursionGroupInformation> recursionGroupInfo(m_recursionGroupInformation, RecursionGroupInformation { true, static_cast<uint32_t>(m_info->gcTypeSignatures.size()), static_cast<uint32_t>(m_info->gcTypeSignatures.size()) + typeCount });
+
+    Vector<WasmGCType*> groupTypes(typeCount, nullptr);
+    Vector<WasmGCType*> supertypes(typeCount, nullptr);
+    Vector<bool> isFinalFlags(typeCount, true);
+    SetForScope<Vector<WasmGCType*>*> groupScope(m_gcGroupTypes, &groupTypes);
+
+    for (uint32_t i = 0; i < typeCount; ++i) {
+        int8_t typeKind;
+        WASM_PARSER_FAIL_IF(!parseInt7(typeKind), "can't get recursion group's "_s, i, "th Type's type"_s);
+        WasmGCType* gcType = nullptr;
+        switch (static_cast<TypeKind>(typeKind)) {
+        case TypeKind::Func:
+            WASM_FAIL_IF_HELPER_FAILS(parseGCFunctionType(i, gcType));
+            break;
+        case TypeKind::Struct:
+            WASM_FAIL_IF_HELPER_FAILS(parseGCStructType(i, gcType));
+            break;
+        case TypeKind::Array:
+            WASM_FAIL_IF_HELPER_FAILS(parseGCArrayType(i, gcType));
+            break;
+        case TypeKind::Sub:
+        case TypeKind::Subfinal:
+            isFinalFlags[i] = (static_cast<TypeKind>(typeKind) == TypeKind::Subfinal);
+            WASM_FAIL_IF_HELPER_FAILS(parseGCSubtype(i, gcType, supertypes[i], groupTypes));
+            break;
+        default:
+            return fail(i, "th Type is non-Func, non-Struct, and non-Array "_s, typeKind);
+        }
+
+        WASM_PARSER_FAIL_IF(!gcType, "can't allocate enough memory for recursion group's "_s, i, "th signature"_s);
+        groupTypes[i] = gcType;
+    }
+
+    WasmGCTypeBuilder::patchPlaceholders(groupTypes.mutableSpan());
+
+    for (uint32_t i = 0; i < typeCount; ++i) {
+        groupTypes[i]->setIsFinal(isFinalFlags[i]);
+        groupTypes[i]->setSupertype(supertypes[i]);
+    }
+
+    WASM_FAIL_IF_HELPER_FAILS(processGCTypeGroup(groupTypes.mutableSpan(), supertypes.mutableSpan(), isFinalFlags.mutableSpan()));
+
+    return { };
+}
+
+auto SectionParser::processGCTypeGroup(std::span<WasmGCType*> groupTypes, std::span<WasmGCType*> supertypes, std::span<bool> isFinalFlags) -> PartialResult
+{
+    ASSERT(groupTypes.size() == supertypes.size());
+    ASSERT(groupTypes.size() == isFinalFlags.size());
+
+    WasmGCTypeBuilder::deduplicateAndRegister(groupTypes, m_info->gcTypeSignatures, *m_info->gcTypeRootSet);
+
+    auto& registry = WasmGCTypeRegistry::singleton();
+    for (auto* type : groupTypes) {
+        registry.registerCanonicalRTTForType(type);
+
+        if (type->supertype()) {
+            auto rtt = registry.getCanonicalRTT(type);
+            WASM_PARSER_FAIL_IF(rtt->displaySizeExcludingThis() > maxSubtypeDepth, "subtype depth exceeded the limit of "_s, maxSubtypeDepth);
+            WASM_FAIL_IF_HELPER_FAILS(checkGCSubtypeValidity(type));
         }
     }
 
-    RELEASE_ASSERT(m_info->typeSignatures.size() == m_info->rtts.size());
+    return { };
+}
+
+bool SectionParser::checkGCStructuralSubtype(const WasmGCType& subtype, const WasmGCType& supertype)
+{
+    if (subtype.typeKind() != supertype.typeKind())
+        return false;
+
+    switch (subtype.typeKind()) {
+    case WasmGCTypeKind::FunctionType: {
+        auto& subFunc = *subtype.as<WasmGCFunctionType>();
+        auto& superFunc = *supertype.as<WasmGCFunctionType>();
+        if (subFunc.argumentCount() != superFunc.argumentCount() || subFunc.returnCount() != superFunc.returnCount())
+            return false;
+        for (FunctionArgCount i = 0; i < subFunc.argumentCount(); ++i) {
+            if (!isGCSubtype(superFunc.argumentType(i), subFunc.argumentType(i)))
+                return false;
+        }
+        for (FunctionArgCount i = 0; i < subFunc.returnCount(); ++i) {
+            if (!isGCSubtype(subFunc.returnType(i), superFunc.returnType(i)))
+                return false;
+        }
+        return true;
+    }
+    case WasmGCTypeKind::StructType: {
+        auto& subStruct = *subtype.as<WasmGCStructType>();
+        auto& superStruct = *supertype.as<WasmGCStructType>();
+        if (subStruct.fieldCount() < superStruct.fieldCount())
+            return false;
+        for (StructFieldCount i = 0; i < superStruct.fieldCount(); ++i) {
+            FieldType subField = subStruct.field(i);
+            FieldType superField = superStruct.field(i);
+            if (subField.mutability != superField.mutability)
+                return false;
+            if (subField.mutability == Mutability::Mutable && subField.type != superField.type)
+                return false;
+            if (subField.mutability == Mutability::Immutable && !isGCSubtype(subField.type, superField.type))
+                return false;
+        }
+        return true;
+    }
+    case WasmGCTypeKind::ArrayType: {
+        FieldType subField = subtype.as<WasmGCArrayType>()->elementType();
+        FieldType superField = supertype.as<WasmGCArrayType>()->elementType();
+        if (subField.mutability != superField.mutability)
+            return false;
+        if (subField.mutability == Mutability::Mutable && subField.type != superField.type)
+            return false;
+        if (subField.mutability == Mutability::Immutable && !isGCSubtype(subField.type, superField.type))
+            return false;
+        return true;
+    }
+    }
+
+    return false;
+}
+
+auto SectionParser::checkGCSubtypeValidity(const WasmGCType* type) -> PartialResult
+{
+    if (!type->supertype())
+        return { };
+
+    const WasmGCType* super = type->supertype();
+    WASM_PARSER_FAIL_IF(super->isFinal(), "cannot declare subtype of final supertype"_s);
+    WASM_PARSER_FAIL_IF(!checkGCStructuralSubtype(*type, *super), "structural type is not a subtype of the specified supertype"_s);
+
     return { };
 }
 

@@ -1469,6 +1469,7 @@ set(JavaScriptCore_PRIVATE_FRAMEWORK_HEADERS
     wasm/WasmThunks.h
     wasm/WasmTierUpCount.h
     wasm/WasmGCType.h
+    wasm/WasmGCTypeBuilder.h
     wasm/WasmGCTypeRegistry.h
     wasm/WasmTypeDefinition.h
     wasm/WasmTypeDefinitionInlines.h
