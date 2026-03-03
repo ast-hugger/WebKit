@@ -44,6 +44,8 @@
 #include "WasmDebugServer.h"
 #include "WasmModuleInformation.h"
 #include "WasmTag.h"
+#include "WasmGCType.h"
+#include "WasmGCTypeRegistry.h"
 #include "WasmTypeDefinitionInlines.h"
 #include "WebAssemblyFunctionBase.h"
 #include "WebAssemblyModuleRecord.h"
@@ -71,6 +73,9 @@ using Wasm::TypeIndex;
 using Wasm::TypeInformation;
 using Wasm::FunctionSpaceIndex;
 using Wasm::isRefType;
+using Wasm::WasmGCType;
+using Wasm::WasmGCFunctionType;
+using Wasm::WasmGCTypeRegistry;
 
 const ClassInfo JSWebAssemblyInstance::s_info = { "WebAssembly.Instance"_s, &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSWebAssemblyInstance) };
 
@@ -151,11 +156,13 @@ void JSWebAssemblyInstance::finishCreation(VM& vm)
     // until folks start doing dynamic code loading.
     JSGlobalObject* globalObject = this->globalObject();
     for (unsigned i = 0; i < m_moduleInformation->typeCount(); ++i) {
-        Ref rtt = m_moduleInformation->rtts[i];
+        const Wasm::RTT* rtt = m_moduleInformation->gcTypeSignatures[i]->m_rtt.get();
+        if (!rtt)
+            continue;
         if (rtt->kind() == RTTKind::Array)
-            gcObjectStructureID(i).set(vm, this, JSWebAssemblyArray::createStructure(vm, globalObject, m_moduleInformation->typeSignatures[i], WTF::move(rtt)));
+            gcObjectStructureID(i).set(vm, this, JSWebAssemblyArray::createStructure(vm, globalObject, m_moduleInformation->gcTypeSignatures[i], Ref { *rtt }));
         else if (rtt->kind() == RTTKind::Struct)
-            gcObjectStructureID(i).set(vm, this, JSWebAssemblyStruct::createStructure(vm, globalObject, m_moduleInformation->typeSignatures[i], WTF::move(rtt)));
+            gcObjectStructureID(i).set(vm, this, JSWebAssemblyStruct::createStructure(vm, globalObject, m_moduleInformation->gcTypeSignatures[i], Ref { *rtt }));
     }
 
     m_vm->traps().registerMirror(m_stackMirror);
@@ -566,7 +573,7 @@ void JSWebAssemblyInstance::initElementSegment(uint32_t tableIndex, const Elemen
                     functionIndex,
                     this,
                     typeIndex,
-                    TypeInformation::getCanonicalRTT(typeIndex));
+                    WasmGCTypeRegistry::singleton().getCanonicalRTT(WasmGCType::fromIndex(typeIndex)));
                 jsTable->set(dstIndex, wrapperFunction);
                 continue;
             }
@@ -575,7 +582,7 @@ void JSWebAssemblyInstance::initElementSegment(uint32_t tableIndex, const Elemen
             auto wasmCallee = calleeGroup()->wasmCalleeFromFunctionIndexSpace(functionIndex);
             ASSERT(wasmCallee);
             WasmToWasmImportableFunction::LoadLocation entrypointLoadLocation = calleeGroup()->entrypointLoadLocationFromFunctionIndexSpace(functionIndex);
-            const auto& signature = TypeInformation::getFunctionSignature(typeIndex);
+            const auto& signature = *WasmGCType::fromIndex(typeIndex)->as<WasmGCFunctionType>();
             // FIXME: Say we export local function "foo" at function index 0.
             // What if we also set it to the table an Element w/ index 0.
             // Does (new Instance(...)).exports.foo === table.get(0)?
@@ -591,7 +598,7 @@ void JSWebAssemblyInstance::initElementSegment(uint32_t tableIndex, const Elemen
                 *wasmCallee,
                 entrypointLoadLocation,
                 typeIndex,
-                TypeInformation::getCanonicalRTT(typeIndex));
+                WasmGCTypeRegistry::singleton().getCanonicalRTT(WasmGCType::fromIndex(typeIndex)));
             jsTable->set(dstIndex, function);
             continue;
         }

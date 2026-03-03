@@ -91,9 +91,16 @@ unsigned WasmGCType::hash() const
         h = computeGCArrayTypeHash(*as<WasmGCArrayType>());
         break;
     }
-    // Mix in finality and supertype pointer identity.
+    // Mix in finality and whether a supertype exists. We deliberately do NOT
+    // hash the supertype pointer identity because structurallyEqual compares
+    // supertypes recursively (structurally). Including pointer identity would
+    // violate the hash contract (equal objects must have equal hashes) when
+    // a tentative type has a different supertype pointer than the canonical
+    // type in the registry.
     h = WTF::pairIntHash(h, WTF::IntHash<uint8_t>::hash(static_cast<uint8_t>(m_isFinal)));
-    h = WTF::pairIntHash(h, WTF::IntHash<uintptr_t>::hash(std::bit_cast<uintptr_t>(m_supertype)));
+    h = WTF::pairIntHash(h, WTF::IntHash<uint8_t>::hash(m_supertype ? 1 : 0));
+    if (m_supertype)
+        h = WTF::pairIntHash(h, WTF::IntHash<uint8_t>::hash(static_cast<uint8_t>(m_supertype->typeKind())));
     return h;
 }
 

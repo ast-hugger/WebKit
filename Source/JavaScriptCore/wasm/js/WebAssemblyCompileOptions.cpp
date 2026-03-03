@@ -29,6 +29,7 @@
 #if ENABLE(WEBASSEMBLY)
 
 #include "IteratorOperations.h"
+#include "WasmGCType.h"
 #include "WasmModuleInformation.h"
 #include "WebAssemblyBuiltin.h"
 
@@ -137,10 +138,10 @@ bool WebAssemblyCompileOptions::validateImportForBuiltinSetNames(const Wasm::Imp
     if (import.kind != Wasm::ExternalKind::Function)
         return false;
     Wasm::TypeIndex typeIndex = moduleInfo.importFunctionTypeIndices[import.kindIndex];
-    Ref<const Wasm::TypeDefinition> type = Wasm::TypeInformation::get(typeIndex);
-    if (!type->is<Wasm::FunctionSignature>())
+    const Wasm::WasmGCType* type = Wasm::WasmGCType::fromIndex(typeIndex);
+    if (!type->is<Wasm::WasmGCFunctionType>())
         return false;
-    SUPPRESS_UNCOUNTED_LOCAL auto* importSig = type->as<Wasm::FunctionSignature>();
+    SUPPRESS_UNCOUNTED_LOCAL auto* importSig = type->as<Wasm::WasmGCFunctionType>();
 
     return builtinSig.isValid(*importSig);
 }

@@ -34,7 +34,7 @@ namespace JSC::B3 {
 
 WasmStructGetValue::~WasmStructGetValue() = default;
 
-WasmStructGetValue::WasmStructGetValue(Kind kind, Origin origin, Type resultType, Value* structPtr, Ref<const Wasm::RTT> rtt, const Wasm::StructType* structType, Wasm::StructFieldCount fieldIndex, uint64_t fieldHeapKey, Mutability mutability)
+WasmStructGetValue::WasmStructGetValue(Kind kind, Origin origin, Type resultType, Value* structPtr, Ref<const Wasm::RTT> rtt, const Wasm::WasmGCStructType* structType, Wasm::StructFieldCount fieldIndex, uint64_t fieldHeapKey, Mutability mutability)
     : WasmStructFieldValue(CheckedOpcode, kind, resultType, One, origin, WTF::move(rtt), structType, fieldIndex, fieldHeapKey, mutability, structPtr)
 {
 }

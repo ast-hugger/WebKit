@@ -58,6 +58,7 @@ namespace Wasm {
 
 class IPIntCallee;
 class TypeDefinition;
+class WasmGCFunctionType;
 struct IPIntGeneratorTraits;
 struct JumpTableEntry;
 
@@ -93,7 +94,7 @@ public:
 
     UncheckedKeyHashMap<IPIntPC, IPIntTierUpCounter::OSREntryData>& tierUpCounter() { return m_tierUpCounter; }
 
-    const RTT* addSignature(const TypeDefinition&);
+    const RTT* addSignature(const WasmGCType&);
 
     void addCallTarget(unsigned callProfileIndex, FunctionSpaceIndex target)
     {
@@ -123,7 +124,7 @@ private:
     void addLEB128ConstantInt64AndLength(uint64_t value, size_t length);
     void addLEB128ConstantAndLengthForType(Type, uint64_t value, size_t length);
     void addLEB128V128Constant(v128_t value, size_t length);
-    void addReturnData(const FunctionSignature&, const CallInformation&);
+    void addReturnData(const WasmGCFunctionType&, const CallInformation&);
 
     FunctionCodeIndex m_functionIndex;
     bool m_hasTailCallSuccessors { false };

@@ -62,6 +62,7 @@
 #include "WasmFaultSignalHandler.h"
 #include "WasmOperations.h"
 #include "WasmThunks.h"
+#include "WasmGCType.h"
 #include "WasmTypeDefinition.h"
 #include "WebAssemblyFunctionBase.h"
 #include "WebAssemblyGCStructure.h"
@@ -578,7 +579,7 @@ private:
             case WasmStructGet: {
                 WasmStructGetValue* structGet = m_value->as<WasmStructGetValue>();
                 Value* structPtr = structGet->child(0);
-                SUPPRESS_UNCOUNTED_LOCAL const Wasm::StructType* structType = structGet->structType();
+                SUPPRESS_UNCOUNTED_LOCAL const Wasm::WasmGCStructType* structType = structGet->structType();
                 Wasm::StructFieldCount fieldIndex = structGet->fieldIndex();
                 auto fieldType = structType->field(fieldIndex).type;
                 bool canTrap = structGet->kind().traps();
@@ -641,7 +642,7 @@ private:
                 WasmStructSetValue* structSet = m_value->as<WasmStructSetValue>();
                 Value* structPtr = structSet->child(0);
                 Value* value = structSet->child(1);
-                SUPPRESS_UNCOUNTED_LOCAL const Wasm::StructType* structType = structSet->structType();
+                SUPPRESS_UNCOUNTED_LOCAL const Wasm::WasmGCStructType* structType = structSet->structType();
                 Wasm::StructFieldCount fieldIndex = structSet->fieldIndex();
                 auto fieldType = structType->field(fieldIndex).type;
                 bool canTrap = structSet->kind().traps();
@@ -676,7 +677,7 @@ private:
                 WasmStructNewValue* structNew = m_value->as<WasmStructNewValue>();
                 Value* instance = structNew->instance();
                 Value* structureID = structNew->structureID();
-                SUPPRESS_UNCOUNTED_LOCAL const Wasm::StructType* structType = structNew->structType();
+                SUPPRESS_UNCOUNTED_LOCAL const Wasm::WasmGCStructType* structType = structNew->structType();
                 uint32_t typeIndex = structNew->typeIndex();
                 auto rtt = structNew->rtt();
                 int32_t allocatorsBaseOffset = structNew->allocatorsBaseOffset();

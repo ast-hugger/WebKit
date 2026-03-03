@@ -47,6 +47,23 @@ namespace JSC { namespace Wasm {
 
 WTF_MAKE_TZONE_ALLOCATED_IMPL(TypeInformation);
 
+static bool isRefWithRecursiveReference(Type type)
+{
+    if (isRefWithTypeIndex(type)) {
+        const TypeDefinition& def = TypeInformation::get(type.index);
+        if (def.is<Projection>())
+            return def.as<Projection>()->isPlaceholder();
+    }
+    return false;
+}
+
+static bool isRefWithRecursiveReference(StorageType storageType)
+{
+    if (storageType.is<PackedType>())
+        return false;
+    return isRefWithRecursiveReference(storageType.as<Type>());
+}
+
 String TypeDefinition::toString() const
 {
     return WTF::toString(*this);

@@ -162,7 +162,7 @@ struct ModuleInformation final : public ThreadSafeRefCounted<ModuleInformation> 
 
     void doneSeeingFunction(FunctionCodeIndex index) { ASSERT(index < internalFunctionCount()); ASSERT(!functions[index].finishedValidating); functions[index].finishedValidating = true; }
 
-    uint32_t typeCount() const { return typeSignatures.size(); }
+    uint32_t typeCount() const { return gcTypeSignatures.size(); }
 
     bool hasGCObjectTypes() const { return m_hasGCObjectTypes; }
 
@@ -205,8 +205,6 @@ struct ModuleInformation final : public ThreadSafeRefCounted<ModuleInformation> 
     Vector<TypeIndex> internalFunctionTypeIndices;
     Vector<TypeIndex> importExceptionTypeIndices;
     Vector<TypeIndex> internalExceptionTypeIndices;
-    Vector<Ref<TypeDefinition>> typeSignatures;
-    Vector<Ref<TypeDefinition>> recursionGroups;
 
     Vector<MemoryInformation> memories;
     bool m_hasGCObjectTypes { false };
@@ -227,7 +225,6 @@ struct ModuleInformation final : public ThreadSafeRefCounted<ModuleInformation> 
     Ref<NameSection> nameSection;
     BranchHints branchHints;
     std::optional<uint32_t> numberOfDataSegments;
-    Vector<Ref<const RTT>> rtts;
     Vector<WasmGCType*> gcTypeSignatures;
     std::unique_ptr<WasmGCTypeRootSet> gcTypeRootSet;
     Vector<Vector<uint8_t>> constantExpressions;

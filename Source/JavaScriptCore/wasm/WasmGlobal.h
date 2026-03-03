@@ -31,6 +31,7 @@
 
 #include <JavaScriptCore/SlotVisitorMacros.h>
 #include <JavaScriptCore/WasmFormat.h>
+#include <JavaScriptCore/WasmGCTypeRegistry.h>
 #include <JavaScriptCore/WasmLimits.h>
 #include <JavaScriptCore/WriteBarrier.h>
 #include <wtf/Ref.h>
@@ -70,6 +71,8 @@ public:
         return adoptRef(*new Global(type, mutability, initialValue));
     }
 
+    ~Global();
+
     Wasm::Type type() const { return m_type; }
     Wasm::Mutability mutability() const { return m_mutability; }
     JSValue get(JSGlobalObject*) const;
@@ -99,28 +102,31 @@ public:
 private:
     Global(Wasm::Type type, Wasm::Mutability mutability, uint64_t initialValue)
         : m_type(type)
-        , m_typeDefinition(TypeInformation::getRef(type.index))
         , m_mutability(mutability)
     {
         ASSERT(m_type != Types::V128);
         m_value.m_primitive = initialValue;
+        registerTypeIfNeeded();
     }
 
     Global(Wasm::Type type, Wasm::Mutability mutability, v128_t initialValue)
         : m_type(type)
-        , m_typeDefinition(TypeInformation::getRef(type.index))
         , m_mutability(mutability)
     {
         ASSERT(m_type == Types::V128);
         m_value.m_vector = initialValue;
     }
 
+    void registerTypeIfNeeded();
+
     Wasm::Type m_type;
-    // If m_type came from a TypeDefinition, the following retains the definition to prevent a dangling m_type.
-    const RefPtr<const Wasm::TypeDefinition> m_typeDefinition;
     Wasm::Mutability m_mutability;
     JSWebAssemblyGlobal* m_owner { nullptr };
     Value m_value;
+    // For globals with concrete ref types (ref <struct>, ref <array>, etc.),
+    // keeps the WasmGCType alive in the registry even after the originating
+    // module is garbage-collected.
+    Wasm::WasmGCTypeRootSet m_typeRootSet;
 };
 
 } } // namespace JSC::Wasm

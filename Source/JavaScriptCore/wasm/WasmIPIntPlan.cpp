@@ -39,6 +39,7 @@
 #include "WasmCallee.h"
 #include "WasmFunctionIPIntMetadataGenerator.h"
 #include "WasmIPIntGenerator.h"
+#include "WasmGCType.h"
 #include "WasmTypeDefinitionInlines.h"
 #include <wtf/GraphNodeWorklist.h>
 #include <wtf/text/MakeString.h>
@@ -94,7 +95,7 @@ void IPIntPlan::compileFunction(FunctionCodeIndex functionIndex)
 {
     const auto& function = m_moduleInformation->functions[functionIndex];
     TypeIndex typeIndex = m_moduleInformation->internalFunctionTypeIndices[functionIndex];
-    const TypeDefinition& signature = TypeInformation::get(typeIndex).expand();
+    const WasmGCType& signature = *WasmGCType::fromIndex(typeIndex);
     auto functionIndexSpace = m_moduleInformation->toSpaceIndex(functionIndex);
     ASSERT_UNUSED(functionIndexSpace, m_moduleInformation->typeIndexFromFunctionIndexSpace(functionIndexSpace) == typeIndex);
 

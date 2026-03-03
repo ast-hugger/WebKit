@@ -61,6 +61,8 @@
 #include "WasmOps.h"
 #include "WasmThunks.h"
 #include "WasmTypeDefinition.h"
+#include "WasmGCType.h"
+#include "WasmGCTypeRegistry.h"
 #include <bit>
 #include <cmath>
 #include <wtf/Assertions.h>
@@ -651,7 +653,7 @@ void ControlData::fillLabels(CCallHelpers::Label label)
         *box = label;
 }
 
-BBQJIT::BBQJIT(CompilationContext& compilationContext, const TypeDefinition& signature, Module& module, CalleeGroup& calleeGroup, IPIntCallee& profiledCallee, BBQCallee& callee, const FunctionData& function, FunctionCodeIndex functionIndex, const ModuleInformation& info, Vector<UnlinkedWasmToWasmCall>& unlinkedWasmToWasmCalls, MemoryMode mode, InternalFunction* compilation)
+BBQJIT::BBQJIT(CompilationContext& compilationContext, const WasmGCType& signature, Module& module, CalleeGroup& calleeGroup, IPIntCallee& profiledCallee, BBQCallee& callee, const FunctionData& function, FunctionCodeIndex functionIndex, const ModuleInformation& info, Vector<UnlinkedWasmToWasmCall>& unlinkedWasmToWasmCalls, MemoryMode mode, InternalFunction* compilation)
     : m_context(compilationContext)
     , m_jit(*compilationContext.wasmEntrypointJIT)
     , m_module(module)
@@ -659,7 +661,7 @@ BBQJIT::BBQJIT(CompilationContext& compilationContext, const TypeDefinition& sig
     , m_profiledCallee(profiledCallee)
     , m_callee(callee)
     , m_function(function)
-    , m_functionSignature(signature.expand().as<FunctionSignature>())
+    , m_functionSignature(signature.as<WasmGCFunctionType>())
     , m_functionIndex(functionIndex)
     , m_info(info)
     , m_mode(mode)
@@ -713,7 +715,7 @@ BBQJIT::BBQJIT(CompilationContext& compilationContext, const TypeDefinition& sig
         m_disassembler->setStartOfCode(m_jit.label());
     }
 
-    CallInformation callInfo = wasmCallingConvention().callInformationFor(signature.expand(), CallRole::Callee);
+    CallInformation callInfo = wasmCallingConvention().callInformationFor(signature, CallRole::Callee);
 
     // Allocate callee save register spaces.
     for (size_t i = 0, size = RegisterAtOffsetList::bbqCalleeSaveRegisters().registerCount(); i < size; ++i)
@@ -758,9 +760,9 @@ void BBQJIT::setParser(FunctionParser<BBQJIT>* parser)
     m_parser = parser;
 }
 
-bool BBQJIT::addArguments(const TypeDefinition& signature)
+bool BBQJIT::addArguments(const WasmGCType& signature)
 {
-    RELEASE_ASSERT(m_arguments.size() == signature.as<FunctionSignature>()->argumentCount()); // We handle arguments in the prologue
+    RELEASE_ASSERT(m_arguments.size() == signature.as<WasmGCFunctionType>()->argumentCount()); // We handle arguments in the prologue
     return true;
 }
 
@@ -1595,21 +1597,21 @@ FloatingPointRange BBQJIT::lookupTruncationRange(TruncationKind truncationKind)
 
 // GC
 
-const Ref<TypeDefinition> BBQJIT::getTypeDefinition(uint32_t typeIndex) { return m_info.typeSignatures[typeIndex]; }
+const WasmGCType* BBQJIT::getTypeDefinition(uint32_t typeIndex) { return m_info.gcTypeSignatures[typeIndex]; }
 
 // Given a type index, verify that it's an array type and return its expansion
-const ArrayType* BBQJIT::getArrayTypeDefinition(uint32_t typeIndex)
+const WasmGCArrayType* BBQJIT::getArrayTypeDefinition(uint32_t typeIndex)
 {
-    Ref<Wasm::TypeDefinition> typeDef = getTypeDefinition(typeIndex);
-    const Wasm::TypeDefinition& arraySignature = typeDef->expand();
-    return arraySignature.as<ArrayType>();
+    const Wasm::WasmGCType* typeDef = getTypeDefinition(typeIndex);
+    ASSERT(typeDef->is<WasmGCArrayType>());
+    return typeDef->as<WasmGCArrayType>();
 }
 
 // Given a type index for an array signature, look it up, expand it and
 // return the element type
 StorageType BBQJIT::getArrayElementType(uint32_t typeIndex)
 {
-    const ArrayType* arrayType = getArrayTypeDefinition(typeIndex);
+    const WasmGCArrayType* arrayType = getArrayTypeDefinition(typeIndex);
     return arrayType->elementType().type;
 }
 
@@ -3689,7 +3691,7 @@ void BBQJIT::emitLoopTierUpCheckAndOSREntryData(const ControlData& data, Stack& 
     return { };
 }
 
-[[nodiscard]] PartialResult BBQJIT::addCatch(unsigned exceptionIndex, const TypeDefinition& exceptionSignature, Stack& expressionStack, ControlType& data, ResultList& results)
+[[nodiscard]] PartialResult BBQJIT::addCatch(unsigned exceptionIndex, const WasmGCType& exceptionSignature, Stack& expressionStack, ControlType& data, ResultList& results)
 {
     m_usesExceptions = true;
     data.flushAndSingleExit(*this, data, expressionStack, false, true);
@@ -3713,7 +3715,7 @@ void BBQJIT::emitLoopTierUpCheckAndOSREntryData(const ControlData& data, Stack& 
     return { };
 }
 
-[[nodiscard]] PartialResult BBQJIT::addCatchToUnreachable(unsigned exceptionIndex, const TypeDefinition& exceptionSignature, ControlType& data, ResultList& results)
+[[nodiscard]] PartialResult BBQJIT::addCatchToUnreachable(unsigned exceptionIndex, const WasmGCType& exceptionSignature, ControlType& data, ResultList& results)
 {
     m_usesExceptions = true;
     unbindAllRegisters();
@@ -3839,7 +3841,7 @@ void BBQJIT::prepareForExceptions()
 {
     // Use the function signature from the parser
     ASSERT(m_parser);
-    const FunctionSignature& functionSignature = *m_parser->signature().template as<FunctionSignature>();
+    const WasmGCFunctionType& functionSignature = *m_parser->signature().template as<WasmGCFunctionType>();
 
     CallInformation wasmCallInfo = wasmCallingConvention().callInformationFor(functionSignature, CallRole::Callee);
 
@@ -4237,7 +4239,7 @@ void BBQJIT::slowPathRestoreBindings(const RegisterBindings& bindings)
 }
 
 template<typename Args>
-void BBQJIT::saveValuesAcrossCallAndPassArguments(const Args& arguments, const CallInformation& callInfo, const TypeDefinition& signature)
+void BBQJIT::saveValuesAcrossCallAndPassArguments(const Args& arguments, const CallInformation& callInfo, const WasmGCType& signature)
 {
     // First, we resolve all the locations of the passed arguments, before any spillage occurs. For constants,
     // we store their normal values; for all other values, we store pinned values with their current location.
@@ -4269,7 +4271,7 @@ void BBQJIT::saveValuesAcrossCallAndPassArguments(const Args& arguments, const C
     // think these will be handled by the caller-save logic without additional effort, but it doesn't hurt to be
     // careful.
     for (size_t i = 0; i < callInfo.params.size(); ++i) {
-        auto type = signature.as<FunctionSignature>()->argumentType(i);
+        auto type = signature.as<WasmGCFunctionType>()->argumentType(i);
         Location paramLocation = Location::fromArgumentLocation(callInfo.params[i], type.kind);
         if (paramLocation.isRegister()) {
             RegisterBinding binding;
@@ -4288,7 +4290,7 @@ void BBQJIT::saveValuesAcrossCallAndPassArguments(const Args& arguments, const C
     WTF::Vector<Location, 8> parameterLocations;
     parameterLocations.reserveInitialCapacity(callInfo.params.size());
     for (unsigned i = 0; i < callInfo.params.size(); i++) {
-        auto type = signature.as<FunctionSignature>()->argumentType(i);
+        auto type = signature.as<WasmGCFunctionType>()->argumentType(i);
         auto parameterLocation = Location::fromArgumentLocation(callInfo.params[i], type.kind);
         parameterLocations.append(parameterLocation);
     }
@@ -4304,7 +4306,7 @@ void BBQJIT::restoreValuesAfterCall(const CallInformation& callInfo)
 }
 
 template<size_t N>
-void BBQJIT::returnValuesFromCall(Vector<Value, N>& results, const FunctionSignature& functionType, const CallInformation& callInfo)
+void BBQJIT::returnValuesFromCall(Vector<Value, N>& results, const WasmGCFunctionType& functionType, const CallInformation& callInfo)
 {
     for (size_t i = 0; i < callInfo.results.size(); i ++) {
         Value result = Value::fromTemp(functionType.returnType(i).kind, currentControlData().enclosedHeight() + currentControlData().implicitSlots() + m_parser->expressionStack().size() + i);
@@ -4344,7 +4346,7 @@ void BBQJIT::returnValuesFromCall(Vector<Value, N>& results, const FunctionSigna
     }
 }
 
-void BBQJIT::emitTailCall(FunctionSpaceIndex functionIndexSpace, const TypeDefinition& signature, ArgumentList& arguments)
+void BBQJIT::emitTailCall(FunctionSpaceIndex functionIndexSpace, const WasmGCType& signature, ArgumentList& arguments)
 {
     const auto& callingConvention = wasmCallingConvention();
     CallInformation callInfo = callingConvention.callInformationFor(signature, CallRole::Callee);
@@ -4353,7 +4355,7 @@ void BBQJIT::emitTailCall(FunctionSpaceIndex functionIndexSpace, const TypeDefin
     m_maxCalleeStackSize = std::max<int>(calleeStackSize, m_maxCalleeStackSize);
 
     const TypeIndex callerTypeIndex = m_info.internalFunctionTypeIndices[m_functionIndex];
-    const TypeDefinition& callerTypeDefinition = TypeInformation::get(callerTypeIndex).expand();
+    const WasmGCType& callerTypeDefinition = *WasmGCType::fromIndex(callerTypeIndex);
     CallInformation wasmCallerInfo = callingConvention.callInformationFor(callerTypeDefinition, CallRole::Callee);
     Checked<int32_t> callerStackSize = WTF::roundUpToMultipleOf(stackAlignmentBytes(), wasmCallerInfo.headerAndArgumentStackSizeInBytes);
     Checked<int32_t> tailCallStackOffsetFromFP = callerStackSize - calleeStackSize;
@@ -4401,7 +4403,7 @@ void BBQJIT::emitTailCall(FunctionSpaceIndex functionIndexSpace, const TypeDefin
         switch (param.location.kind()) {
         case ValueLocation::Kind::GPRRegister:
         case ValueLocation::Kind::FPRRegister: {
-            auto type = signature.as<FunctionSignature>()->argumentType(i);
+            auto type = signature.as<WasmGCFunctionType>()->argumentType(i);
             parameterLocations.append(Location::fromArgumentLocation(param, type.kind));
             break;
         }
@@ -4459,7 +4461,7 @@ void BBQJIT::emitTailCall(FunctionSpaceIndex functionIndexSpace, const TypeDefin
 }
 
 
-[[nodiscard]] PartialResult BBQJIT::addCall(unsigned callProfileIndex, FunctionSpaceIndex functionIndexSpace, const TypeDefinition& signature, ArgumentList& arguments, ResultList& results, CallType callType)
+[[nodiscard]] PartialResult BBQJIT::addCall(unsigned callProfileIndex, FunctionSpaceIndex functionIndexSpace, const WasmGCType& signature, ArgumentList& arguments, ResultList& results, CallType callType)
 {
     emitIncrementCallProfileCount(callProfileIndex);
     JIT_COMMENT(m_jit, "calling functionIndexSpace: ", functionIndexSpace, ConditionalDump(!m_info.isImportedFunctionFromFunctionIndexSpace(functionIndexSpace), " functionIndex: ", functionIndexSpace - m_info.importFunctionCount()));
@@ -4469,7 +4471,7 @@ void BBQJIT::emitTailCall(FunctionSpaceIndex functionIndexSpace, const TypeDefin
         return { };
     }
 
-    const FunctionSignature& functionType = *signature.as<FunctionSignature>();
+    const WasmGCFunctionType& functionType = *signature.as<WasmGCFunctionType>();
     CallInformation callInfo = wasmCallingConvention().callInformationFor(signature, CallRole::Caller);
     Checked<int32_t> calleeStackSize = WTF::roundUpToMultipleOf<stackAlignmentBytes()>(callInfo.headerAndArgumentStackSizeInBytes);
     m_maxCalleeStackSize = std::max<int>(calleeStackSize, m_maxCalleeStackSize);
@@ -4518,7 +4520,7 @@ void BBQJIT::emitTailCall(FunctionSpaceIndex functionIndexSpace, const TypeDefin
     return { };
 }
 
-void BBQJIT::emitIndirectCall(const char* opcode, unsigned callProfileIndex, const Value& callee, GPRReg importableFunction, const TypeDefinition& signature, ArgumentList& arguments, ResultList& results)
+void BBQJIT::emitIndirectCall(const char* opcode, unsigned callProfileIndex, const Value& callee, GPRReg importableFunction, const WasmGCType& signature, ArgumentList& arguments, ResultList& results)
 {
     ASSERT(importableFunction == GPRInfo::nonPreservedNonArgumentGPR1);
     ASSERT(!RegisterSet::argumentGPRs().contains(importableFunction, IgnoreVectors));
@@ -4591,14 +4593,14 @@ void BBQJIT::emitIndirectCall(const char* opcode, unsigned callProfileIndex, con
     m_jit.move(wasmScratchGPR, MacroAssembler::stackPointerRegister);
 #endif
 
-    returnValuesFromCall(results, *signature.as<FunctionSignature>(), wasmCalleeInfo);
+    returnValuesFromCall(results, *signature.as<WasmGCFunctionType>(), wasmCalleeInfo);
 
     restoreWebAssemblyGlobalStateAfterWasmCall();
 
     LOG_INSTRUCTION(opcode, callee, arguments, "=> ", results);
 }
 
-void BBQJIT::emitIndirectTailCall(const char* opcode, const Value& callee, GPRReg importableFunction, const TypeDefinition& signature, ArgumentList& arguments)
+void BBQJIT::emitIndirectTailCall(const char* opcode, const Value& callee, GPRReg importableFunction, const WasmGCType& signature, ArgumentList& arguments)
 {
     ASSERT(!RegisterSet::argumentGPRs().contains(importableFunction, IgnoreVectors));
     ASSERT(!RegisterSet::argumentGPRs().contains(wasmScratchGPR, IgnoreVectors));
@@ -4622,7 +4624,7 @@ void BBQJIT::emitIndirectTailCall(const char* opcode, const Value& callee, GPRRe
     m_maxCalleeStackSize = std::max<int>(calleeStackSize, m_maxCalleeStackSize);
 
     const TypeIndex callerTypeIndex = m_info.internalFunctionTypeIndices[m_functionIndex];
-    const TypeDefinition& callerTypeDefinition = TypeInformation::get(callerTypeIndex).expand();
+    const WasmGCType& callerTypeDefinition = *WasmGCType::fromIndex(callerTypeIndex);
     CallInformation wasmCallerInfo = callingConvention.callInformationFor(callerTypeDefinition, CallRole::Callee);
     Checked<int32_t> callerStackSize = WTF::roundUpToMultipleOf(stackAlignmentBytes(), wasmCallerInfo.headerAndArgumentStackSizeInBytes);
     Checked<int32_t> tailCallStackOffsetFromFP = callerStackSize - calleeStackSize;
@@ -4677,7 +4679,7 @@ void BBQJIT::emitIndirectTailCall(const char* opcode, const Value& callee, GPRRe
         switch (param.location.kind()) {
         case ValueLocation::Kind::GPRRegister:
         case ValueLocation::Kind::FPRRegister: {
-            auto type = signature.as<FunctionSignature>()->argumentType(i);
+            auto type = signature.as<WasmGCFunctionType>()->argumentType(i);
             parameterLocations.append(Location::fromArgumentLocation(param, type.kind));
             break;
         }
@@ -4725,12 +4727,12 @@ void BBQJIT::emitIndirectTailCall(const char* opcode, const Value& callee, GPRRe
         consume(value);
 }
 
-[[nodiscard]] PartialResult BBQJIT::addCallIndirect(unsigned callProfileIndex, unsigned tableIndex, const TypeDefinition& originalSignature, ArgumentList& args, ResultList& results, CallType callType)
+[[nodiscard]] PartialResult BBQJIT::addCallIndirect(unsigned callProfileIndex, unsigned tableIndex, const WasmGCType& originalSignature, ArgumentList& args, ResultList& results, CallType callType)
 {
     emitIncrementCallProfileCount(callProfileIndex);
     Value calleeIndex = args.takeLast();
-    const TypeDefinition& signature = originalSignature.expand();
-    ASSERT(signature.as<FunctionSignature>()->argumentCount() == args.size());
+    const WasmGCType& signature = originalSignature;
+    ASSERT(signature.as<WasmGCFunctionType>()->argumentCount() == args.size());
     ASSERT(m_info.tableCount() > tableIndex);
     ASSERT(m_info.tables[tableIndex].type() == TableElementType::Funcref);
 
@@ -4816,9 +4818,9 @@ void BBQJIT::emitIndirectTailCall(const char* opcode, const Value& callee, GPRRe
             // We should move just to use a single branch and then figure out what
             // error to use in the exception handler.
 
-            auto targetRTT = TypeInformation::getCanonicalRTT(originalSignature.index());
+            auto targetRTT = WasmGCTypeRegistry::singleton().getCanonicalRTT(WasmGCType::fromIndex(originalSignature.index()));
             m_jit.loadPtr(CCallHelpers::Address(importableFunction, WasmToWasmImportableFunction::offsetOfRTT()), wasmScratchGPR);
-            if (originalSignature.isFinalType())
+            if (originalSignature.isFinal())
                 recordJumpToThrowException(ExceptionType::BadSignature, m_jit.branchPtr(CCallHelpers::NotEqual, wasmScratchGPR, TrustedImmPtr(targetRTT.ptr())));
             else {
                 auto indexEqual = m_jit.branchPtr(CCallHelpers::Equal, wasmScratchGPR, TrustedImmPtr(targetRTT.ptr()));
@@ -5709,7 +5711,7 @@ void BBQJIT::emitArrayGetPayload(StorageType type, GPRReg arrayGPR, GPRReg paylo
 
 } // namespace JSC::Wasm::BBQJITImpl
 
-Expected<std::unique_ptr<InternalFunction>, String> parseAndCompileBBQ(CompilationContext& compilationContext, IPIntCallee& profiledCallee, BBQCallee& callee, const FunctionData& function, const TypeDefinition& signature, Vector<UnlinkedWasmToWasmCall>& unlinkedWasmToWasmCalls, Module& module, CalleeGroup& calleeGroup, const ModuleInformation& info, MemoryMode mode, FunctionCodeIndex functionIndex)
+Expected<std::unique_ptr<InternalFunction>, String> parseAndCompileBBQ(CompilationContext& compilationContext, IPIntCallee& profiledCallee, BBQCallee& callee, const FunctionData& function, const WasmGCType& signature, Vector<UnlinkedWasmToWasmCall>& unlinkedWasmToWasmCalls, Module& module, CalleeGroup& calleeGroup, const ModuleInformation& info, MemoryMode mode, FunctionCodeIndex functionIndex)
 {
     CompilerTimingScope totalTime("BBQ"_s, "Total BBQ"_s);
 

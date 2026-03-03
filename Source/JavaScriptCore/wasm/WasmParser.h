@@ -130,8 +130,6 @@ private:
     std::span<const uint8_t> m_source;
 
 protected:
-    // We keep a local reference to the global table so we don't have to fetch it to find thunk types.
-    const TypeInformation& m_typeInformation;
     // Used to track whether we are in a recursion group and the group's type indices, if any.
     RecursionGroupInformation m_recursionGroupInformation;
 };
@@ -147,7 +145,6 @@ public:
 
 ALWAYS_INLINE ParserBase::ParserBase(std::span<const uint8_t> source)
     : m_source(source)
-    , m_typeInformation(TypeInformation::singleton())
     , m_recursionGroupInformation({ })
 {
 }
@@ -361,20 +358,9 @@ ALWAYS_INLINE bool ParserBase::parseValueType(const ModuleInformation& info, Typ
                     typeIndex = info.gcTypeSignatures[heapType]->index();
                 }
             } else {
-                // Legacy TypeDefinition path.
-                // For recursive references inside recursion groups, we construct a
-                // placeholder projection with an invalid group index. These should
-                // be replaced with a real type index in expand() before use.
-                if (m_recursionGroupInformation.inRecursionGroup && static_cast<uint32_t>(heapType) >= m_recursionGroupInformation.start) {
-                    ASSERT(static_cast<uint32_t>(heapType) >= info.typeCount() && static_cast<uint32_t>(heapType) < m_recursionGroupInformation.end);
-                    ProjectionIndex groupIndex = static_cast<ProjectionIndex>(heapType - m_recursionGroupInformation.start);
-                    RefPtr<TypeDefinition> def = TypeInformation::getPlaceholderProjection(groupIndex);
-                    RELEASE_ASSERT(def->refCount() > 2); // tbl + RefPtr + owner
-                    typeIndex = def->index(); // Owned by TypeInformation placeholder projections singleton.
-                } else {
-                    ASSERT(static_cast<uint32_t>(heapType) < info.typeCount());
-                    typeIndex = TypeInformation::get(info.typeSignatures[heapType].get());
-                }
+                // Outside of type section parsing, resolve from gcTypeSignatures.
+                ASSERT(static_cast<uint32_t>(heapType) < info.gcTypeSignatures.size());
+                typeIndex = info.gcTypeSignatures[heapType]->index();
             }
         }
     }

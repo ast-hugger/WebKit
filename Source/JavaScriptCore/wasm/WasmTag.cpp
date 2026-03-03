@@ -26,6 +26,7 @@
 #include "config.h"
 #include "WasmTag.h"
 
+#include "WasmFormat.h"
 #include <wtf/NeverDestroyed.h>
 #include <wtf/TZoneMallocInlines.h>
 
@@ -42,7 +43,11 @@ Tag& Tag::jsExceptionTag()
     static std::once_flag onceKey;
     static LazyNeverDestroyed<Ref<Tag>> result;
     std::call_once(onceKey, [] {
-        result.construct(Tag::create(TypeInformation::signatureForJSException()));
+        // Create a void(externref) function type for JS exceptions.
+        auto* type = WasmGCFunctionType::tryCreate(0, 1);
+        RELEASE_ASSERT(type);
+        type->getArgumentType(0) = Wasm::externrefType();
+        result.construct(Tag::createOwning(type));
     });
     return result.get();
 }

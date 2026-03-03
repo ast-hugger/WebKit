@@ -44,6 +44,8 @@
 #include <JavaScriptCore/WasmNameSection.h>
 #include <JavaScriptCore/WasmOps.h>
 #include <JavaScriptCore/WasmTypeDefinition.h>
+#include <JavaScriptCore/WasmGCType.h>
+#include <JavaScriptCore/WasmGCTypeRegistry.h>
 #include <cstdint>
 #include <limits>
 #include <memory>
@@ -78,8 +80,8 @@ public:
     {
     }
 
-    // Constructor from FunctionSignature held by Wasm::Module.
-    explicit BlockSignature(const FunctionSignature& signature)
+    // Constructor from WasmGCFunctionType held by Wasm::Module.
+    explicit BlockSignature(const WasmGCFunctionType& signature)
         : m_storage(&signature)
     {
     }
@@ -87,7 +89,7 @@ public:
     unsigned argumentCount() const
     {
         return WTF::switchOn(m_storage,
-            [](const FunctionSignature* signature) -> unsigned {
+            [](const WasmGCFunctionType* signature) -> unsigned {
                 return signature->argumentCount();
             },
             [](Type) -> unsigned {
@@ -99,7 +101,7 @@ public:
     unsigned returnCount() const
     {
         return WTF::switchOn(m_storage,
-            [](const FunctionSignature* signature) -> unsigned {
+            [](const WasmGCFunctionType* signature) -> unsigned {
                 return signature->returnCount();
             },
             [](Type type) -> unsigned {
@@ -111,7 +113,7 @@ public:
     Type argumentType(unsigned index) const
     {
         return WTF::switchOn(m_storage,
-            [&](const FunctionSignature* signature) -> Type {
+            [&](const WasmGCFunctionType* signature) -> Type {
                 ASSERT(index < signature->argumentCount());
                 return signature->argumentType(index);
             },
@@ -125,7 +127,7 @@ public:
     Type returnType(unsigned index) const
     {
         return WTF::switchOn(m_storage,
-            [&](const FunctionSignature* signature) -> Type {
+            [&](const WasmGCFunctionType* signature) -> Type {
                 ASSERT(index < signature->returnCount());
                 return signature->returnType(index);
             },
@@ -139,7 +141,7 @@ public:
     bool hasReturnVector() const
     {
         return WTF::switchOn(m_storage,
-            [](const FunctionSignature* signature) -> bool {
+            [](const WasmGCFunctionType* signature) -> bool {
                 return signature->hasReturnVector();
             },
             [](Type type) -> bool {
@@ -151,7 +153,7 @@ public:
     void dump(PrintStream& out) const;
 
 private:
-    WTF::Variant<const FunctionSignature*, Type> m_storage;
+    WTF::Variant<const WasmGCFunctionType*, Type> m_storage;
 };
 
 enum class TableElementType : uint8_t {
@@ -271,7 +273,7 @@ inline bool isInternalref(Type type)
             return false;
         }
     }
-    return !TypeInformation::get(type.index).expand().is<FunctionSignature>();
+    return !WasmGCType::fromIndex(type.index)->is<WasmGCFunctionType>();
 }
 
 inline bool isI31ref(Type type)
@@ -361,27 +363,6 @@ inline bool isRefWithTypeIndex(Type type)
     return isRefType(type) && !typeIndexIsType(type.index);
 }
 
-// Determine if the ref type has a placeholder type index that is used
-// for an unresolved recursive reference in a recursion group.
-inline bool isRefWithRecursiveReference(Type type)
-{
-    if (isRefWithTypeIndex(type)) {
-        const TypeDefinition& def = TypeInformation::get(type.index);
-        if (def.is<Projection>())
-            return def.as<Projection>()->isPlaceholder();
-    }
-
-    return false;
-}
-
-inline bool isRefWithRecursiveReference(StorageType storageType)
-{
-    if (storageType.is<PackedType>())
-        return false;
-
-    return isRefWithRecursiveReference(storageType.as<Type>());
-}
-
 inline bool isTypeIndexHeapType(int32_t heapType)
 {
     return heapType >= 0;
@@ -392,8 +373,10 @@ inline bool isSubtypeIndex(TypeIndex sub, TypeIndex parent)
     if (sub == parent)
         return true;
 
-    auto subRTT = TypeInformation::getCanonicalRTT(sub);
-    auto parentRTT = TypeInformation::getCanonicalRTT(parent);
+    auto* subType = WasmGCType::fromIndex(sub);
+    auto* parentType = WasmGCType::fromIndex(parent);
+    auto subRTT = WasmGCTypeRegistry::singleton().getCanonicalRTT(subType);
+    auto parentRTT = WasmGCTypeRegistry::singleton().getCanonicalRTT(parentType);
 
     return subRTT->isStrictSubRTT(parentRTT.get());
 }
@@ -410,17 +393,18 @@ inline bool isSubtypeSlow(Type sub, Type parent)
         if (isRefWithTypeIndex(parent))
             return isSubtypeIndex(sub.index, parent.index);
 
+        auto* subGCType = WasmGCType::fromIndex(sub.index);
         if ((isAnyref(parent) || isEqref(parent)))
-            return !TypeInformation::get(sub.index).expand().is<FunctionSignature>();
+            return !subGCType->is<WasmGCFunctionType>();
 
         if (isArrayref(parent))
-            return TypeInformation::get(sub.index).expand().is<ArrayType>();
+            return subGCType->is<WasmGCArrayType>();
 
         if (isStructref(parent))
-            return TypeInformation::get(sub.index).expand().is<StructType>();
+            return subGCType->is<WasmGCStructType>();
 
         if (isFuncref(parent))
-            return TypeInformation::get(sub.index).expand().is<FunctionSignature>();
+            return subGCType->is<WasmGCFunctionType>();
     }
 
     if ((isI31ref(sub) || isStructref(sub) || isArrayref(sub)) && (isAnyref(parent) || isEqref(parent)))

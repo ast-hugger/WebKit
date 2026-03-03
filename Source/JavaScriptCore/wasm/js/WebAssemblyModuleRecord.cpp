@@ -40,6 +40,8 @@
 #include "JSWebAssemblyTag.h"
 #include "ObjectConstructor.h"
 #include "WasmConstExprGenerator.h"
+#include "WasmGCType.h"
+#include "WasmGCTypeRegistry.h"
 #include "WasmOperationsInlines.h"
 #include "WasmTypeDefinitionInlines.h"
 #include "WebAssemblyBuiltin.h"
@@ -542,7 +544,7 @@ void WebAssemblyModuleRecord::initializeExports(JSGlobalObject* globalObject)
 
     for (unsigned index = 0; index < moduleInformation.internalExceptionTypeIndices.size(); ++index) {
         Wasm::TypeIndex typeIndex = moduleInformation.internalExceptionTypeIndices[index];
-        m_instance->setTag(moduleInformation.importExceptionCount() + index, Wasm::Tag::create(Wasm::TypeInformation::get(typeIndex).expand()));
+        m_instance->setTag(moduleInformation.importExceptionCount() + index, Wasm::Tag::create(Wasm::WasmGCType::fromIndex(typeIndex)->as<Wasm::WasmGCFunctionType>()));
     }
 
     unsigned functionImportCount = calleeGroup->functionImportCount();
@@ -562,7 +564,7 @@ void WebAssemblyModuleRecord::initializeExports(JSGlobalObject* globalObject)
                 wrapper = functionImport;
             else {
                 Wasm::TypeIndex typeIndex = module->typeIndexFromFunctionIndexSpace(functionIndexSpace);
-                wrapper = WebAssemblyWrapperFunction::create(vm, globalObject, globalObject->webAssemblyWrapperFunctionStructure(), functionImport, functionIndexSpace, m_instance.get(), typeIndex, Wasm::TypeInformation::getCanonicalRTT(typeIndex));
+                wrapper = WebAssemblyWrapperFunction::create(vm, globalObject, globalObject->webAssemblyWrapperFunctionStructure(), functionImport, functionIndexSpace, m_instance.get(), typeIndex, Wasm::WasmGCTypeRegistry::singleton().getCanonicalRTT(Wasm::WasmGCType::fromIndex(typeIndex)));
             }
         } else {
             //   iii. Otherwise:
@@ -574,8 +576,8 @@ void WebAssemblyModuleRecord::initializeExports(JSGlobalObject* globalObject)
             ASSERT(wasmCallee);
             Wasm::WasmToWasmImportableFunction::LoadLocation entrypointLoadLocation = calleeGroup->entrypointLoadLocationFromFunctionIndexSpace(functionIndexSpace);
             Wasm::TypeIndex typeIndex = module->typeIndexFromFunctionIndexSpace(functionIndexSpace);
-            const auto& signature = Wasm::TypeInformation::getFunctionSignature(typeIndex);
-            WebAssemblyFunction* function = WebAssemblyFunction::create(vm, globalObject, globalObject->webAssemblyFunctionStructure(), signature.argumentCount(), makeString(functionIndexSpace.rawIndex()), m_instance.get(), jsToWasmCallee, *wasmCallee, entrypointLoadLocation, typeIndex, Wasm::TypeInformation::getCanonicalRTT(typeIndex));
+            const auto& signature = *Wasm::WasmGCType::fromIndex(typeIndex)->as<Wasm::WasmGCFunctionType>();
+            WebAssemblyFunction* function = WebAssemblyFunction::create(vm, globalObject, globalObject->webAssemblyFunctionStructure(), signature.argumentCount(), makeString(functionIndexSpace.rawIndex()), m_instance.get(), jsToWasmCallee, *wasmCallee, entrypointLoadLocation, typeIndex, Wasm::WasmGCTypeRegistry::singleton().getCanonicalRTT(Wasm::WasmGCType::fromIndex(typeIndex)));
             wrapper = function;
         }
 
@@ -806,7 +808,7 @@ void WebAssemblyModuleRecord::initializeExports(JSGlobalObject* globalObject)
     if (hasStart) {
         auto startFunctionIndexSpace = Wasm::FunctionSpaceIndex(moduleInformation.startFunctionIndexSpace.value());
         Wasm::TypeIndex typeIndex = module->typeIndexFromFunctionIndexSpace(startFunctionIndexSpace);
-        const auto& signature = Wasm::TypeInformation::getFunctionSignature(typeIndex);
+        const auto& signature = *Wasm::WasmGCType::fromIndex(typeIndex)->as<Wasm::WasmGCFunctionType>();
         // The start function must not take any arguments or return anything. This is enforced by the parser.
         ASSERT(!signature.argumentCount());
         ASSERT(signature.returnsVoid());
@@ -821,7 +823,7 @@ void WebAssemblyModuleRecord::initializeExports(JSGlobalObject* globalObject)
             auto wasmCallee = calleeGroup->wasmCalleeFromFunctionIndexSpace(startFunctionIndexSpace);
             ASSERT(wasmCallee);
             Wasm::WasmToWasmImportableFunction::LoadLocation entrypointLoadLocation = calleeGroup->entrypointLoadLocationFromFunctionIndexSpace(startFunctionIndexSpace);
-            WebAssemblyFunction* function = WebAssemblyFunction::create(vm, globalObject, globalObject->webAssemblyFunctionStructure(), signature.argumentCount(), "start"_s, m_instance.get(), jsToWasmCallee, *wasmCallee, entrypointLoadLocation, typeIndex, Wasm::TypeInformation::getCanonicalRTT(typeIndex));
+            WebAssemblyFunction* function = WebAssemblyFunction::create(vm, globalObject, globalObject->webAssemblyFunctionStructure(), signature.argumentCount(), "start"_s, m_instance.get(), jsToWasmCallee, *wasmCallee, entrypointLoadLocation, typeIndex, Wasm::WasmGCTypeRegistry::singleton().getCanonicalRTT(Wasm::WasmGCType::fromIndex(typeIndex)));
             m_startFunction.set(vm, this, function);
         }
     }

@@ -361,7 +361,7 @@ static bool parseAndVerifyDebugInfoImpl(JSC::VM* vm, const SourceModule& sourceM
     const auto& function = moduleInfo->functions[functionIndex];
     JSC::Wasm::FunctionSpaceIndex spaceIndex = moduleInfo->toSpaceIndex(functionIndex);
     JSC::Wasm::TypeIndex typeIndex = moduleInfo->typeIndexFromFunctionIndexSpace(spaceIndex);
-    Ref typeDefinition = JSC::Wasm::TypeInformation::get(typeIndex);
+    const auto& typeDefinition = *JSC::Wasm::WasmGCType::fromIndex(typeIndex);
 
     auto functionData = moduleInfo->debugInfo->source.subspan(function.start, function.data.size());
     JSC::Wasm::FunctionDebugInfo debugInfo;

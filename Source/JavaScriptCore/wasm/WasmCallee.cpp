@@ -476,7 +476,7 @@ JSToWasmCallee::JSToWasmCallee(TypeIndex typeIndex, bool)
     : Callee(Wasm::CompilationMode::JSToWasmMode)
     , m_typeIndex(typeIndex)
 {
-    const TypeDefinition& signature = TypeInformation::get(typeIndex).expand();
+    const WasmGCType& signature = *WasmGCType::fromIndex(typeIndex);
     CallInformation wasmFrameConvention = wasmCallingConvention().callInformationFor(signature, CallRole::Caller);
 
     RegisterAtOffsetList savedResultRegisters = wasmFrameConvention.computeResultsOffsetList();

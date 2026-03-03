@@ -32,6 +32,7 @@
 #include "IteratorOperations.h"
 #include "JSGlobalObject.h"
 #include "JSWebAssemblyTag.h"
+#include "WasmGCType.h"
 #include "WebAssemblyTagPrototype.h"
 
 namespace JSC {
@@ -86,10 +87,14 @@ JSC_DEFINE_HOST_FUNCTION(constructJSWebAssemblyTag, (JSGlobalObject* globalObjec
     });
     RETURN_IF_EXCEPTION(scope, { });
 
-    RefPtr<Wasm::TypeDefinition> typeDefinition = Wasm::TypeInformation::typeDefinitionForFunction({ }, parameters);
+    Wasm::WasmGCFunctionType* functionType = Wasm::WasmGCFunctionType::tryCreate(0, parameters.size());
+    if (!functionType)
+        return throwVMError(globalObject, scope, "Failed to allocate function type for Tag"_s);
+    for (unsigned i = 0; i < parameters.size(); ++i)
+        functionType->getArgumentType(i) = parameters[i];
     Structure* structure = JSC_GET_DERIVED_STRUCTURE(vm, webAssemblyTagStructure, asObject(callFrame->newTarget()), callFrame->jsCallee());
     RETURN_IF_EXCEPTION(scope, { });
-    RELEASE_AND_RETURN(scope, JSValue::encode(JSWebAssemblyTag::create(vm, globalObject, structure, Wasm::Tag::create(typeDefinition.releaseNonNull()).get())));
+    RELEASE_AND_RETURN(scope, JSValue::encode(JSWebAssemblyTag::create(vm, globalObject, structure, Wasm::Tag::createOwning(functionType).get())));
 }
 
 JSC_DEFINE_HOST_FUNCTION(callJSWebAssemblyTag, (JSGlobalObject* globalObject, CallFrame*))

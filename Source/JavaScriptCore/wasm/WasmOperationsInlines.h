@@ -37,6 +37,7 @@
 #include "TypedArrayController.h"
 #include "WaiterListManager.h"
 #include "WasmIPIntGenerator.h"
+#include "WasmGCType.h"
 #include "WasmModuleInformation.h"
 #include "WasmTypeDefinition.h"
 
@@ -65,9 +66,9 @@ JSWebAssemblyArray* tryFillArray(JSWebAssemblyInstance* instance, WebAssemblyGCS
 
 inline JSValue arrayNew(JSWebAssemblyInstance* instance, WebAssemblyGCStructure* structure, uint32_t size, EncodedJSValue encValue)
 {
-    const Wasm::TypeDefinition& arraySignature = structure->typeDefinition();
-    ASSERT(arraySignature.is<ArrayType>());
-    Wasm::FieldType fieldType = arraySignature.as<ArrayType>()->elementType();
+    const Wasm::WasmGCType& arraySignature = structure->typeDefinition();
+    ASSERT(arraySignature.is<WasmGCArrayType>());
+    Wasm::FieldType fieldType = arraySignature.as<WasmGCArrayType>()->elementType();
 
     size_t elementSize = fieldType.type.elementSize();
 
@@ -101,9 +102,9 @@ inline JSValue arrayNew(JSWebAssemblyInstance* instance, WebAssemblyGCStructure*
 {
     VM& vm = instance->vm();
 
-    const Wasm::TypeDefinition& arraySignature = structure->typeDefinition();
-    ASSERT(arraySignature.is<ArrayType>());
-    Wasm::FieldType fieldType = arraySignature.as<ArrayType>()->elementType();
+    const Wasm::WasmGCType& arraySignature = structure->typeDefinition();
+    ASSERT(arraySignature.is<WasmGCArrayType>());
+    Wasm::FieldType fieldType = arraySignature.as<WasmGCArrayType>()->elementType();
     ASSERT_UNUSED(fieldType, fieldType.type.unpacked().isV128());
 
     auto* array = JSWebAssemblyArray::tryCreate(vm, structure, size);
@@ -144,9 +145,9 @@ JSWebAssemblyArray* tryCopyElementsInReverse(JSWebAssemblyInstance* instance, We
 inline JSValue arrayNewFixed(JSWebAssemblyInstance* instance, WebAssemblyGCStructure* structure, uint32_t size, IPInt::IPIntStackEntry* arguments)
 {
     // Get the array element type and determine the element size
-    const Wasm::TypeDefinition& arraySignature = structure->typeDefinition();
-    ASSERT(arraySignature.is<ArrayType>());
-    Wasm::FieldType fieldType = arraySignature.as<ArrayType>()->elementType();
+    const Wasm::WasmGCType& arraySignature = structure->typeDefinition();
+    ASSERT(arraySignature.is<WasmGCArrayType>());
+    Wasm::FieldType fieldType = arraySignature.as<WasmGCArrayType>()->elementType();
     size_t elementSize = fieldType.type.elementSize();
 
     // Copy the elements into the result array in reverse order
@@ -205,11 +206,11 @@ inline EncodedJSValue arrayNewData(JSWebAssemblyInstance* instance, uint32_t typ
     // Check that the type index is within bounds
     ASSERT(typeIndex < instance->module().moduleInformation().typeCount());
     WebAssemblyGCStructure* structure = instance->gcObjectStructure(typeIndex);
-    const Wasm::TypeDefinition& arraySignature = structure->typeDefinition();
-    ASSERT(arraySignature.is<ArrayType>());
+    const Wasm::WasmGCType& arraySignature = structure->typeDefinition();
+    ASSERT(arraySignature.is<WasmGCArrayType>());
 
     // Get the array element type
-    Wasm::FieldType fieldType = arraySignature.as<ArrayType>()->elementType();
+    Wasm::FieldType fieldType = arraySignature.as<WasmGCArrayType>()->elementType();
     // Determine the array length in bytes from the element type and desired array size
     size_t elementSize = fieldType.type.elementSize();
 
@@ -262,7 +263,7 @@ inline EncodedJSValue arrayNewElem(JSWebAssemblyInstance* instance, uint32_t typ
     ASSERT(typeIndex < instance->module().moduleInformation().typeCount());
 
     WebAssemblyGCStructure* structure = instance->gcObjectStructure(typeIndex);
-    ASSERT(structure->typeDefinition().is<ArrayType>());
+    ASSERT(structure->typeDefinition().is<WasmGCArrayType>());
 
     // Ensure that adding the offset to the desired array length doesn't overflow int32 or
     // overflow the length of the element segment
@@ -273,7 +274,7 @@ inline EncodedJSValue arrayNewElem(JSWebAssemblyInstance* instance, uint32_t typ
         return JSValue::encode(jsNull());
 
     VM& vm = instance->vm();
-    StorageType arrayType = structure->typeDefinition().as<ArrayType>()->elementType().type;
+    StorageType arrayType = structure->typeDefinition().as<WasmGCArrayType>()->elementType().type;
     ASSERT_UNUSED(arrayType, !arraySize || isSubtype(StorageType(element->elementType), arrayType));
     auto* array = JSWebAssemblyArray::tryCreate(vm, structure, arraySize);
     if (!array) [[unlikely]]
@@ -295,8 +296,8 @@ inline EncodedJSValue arrayNewElem(JSWebAssemblyInstance* instance, uint32_t typ
 inline void arrayGet(JSWebAssemblyInstance* instance, uint32_t typeIndex, EncodedJSValue arrayValue, uint32_t index, IPInt::IPIntStackEntry* result)
 {
     ASSERT_UNUSED(instance, typeIndex < instance->module().moduleInformation().typeCount());
-    const Wasm::TypeDefinition& arraySignature = instance->module().moduleInformation().typeSignatures[typeIndex]->expand();
-    ASSERT_UNUSED(arraySignature, arraySignature.is<ArrayType>());
+    const Wasm::WasmGCType& arraySignature = *instance->module().moduleInformation().gcTypeSignatures[typeIndex];
+    ASSERT_UNUSED(arraySignature, arraySignature.is<WasmGCArrayType>());
 
     JSValue arrayRef = JSValue::decode(arrayValue);
     ASSERT(arrayRef.isObject());
@@ -311,14 +312,14 @@ inline void arrayGet(JSWebAssemblyInstance* instance, uint32_t typeIndex, Encode
 inline void arraySet(JSWebAssemblyInstance* instance, uint32_t typeIndex, EncodedJSValue arrayValue, uint32_t index, IPInt::IPIntStackEntry* value)
 {
     ASSERT_UNUSED(instance, typeIndex < instance->module().moduleInformation().typeCount());
-    const Wasm::TypeDefinition& arraySignature = instance->module().moduleInformation().typeSignatures[typeIndex]->expand();
-    ASSERT(arraySignature.is<ArrayType>());
+    const Wasm::WasmGCType& arraySignature = *instance->module().moduleInformation().gcTypeSignatures[typeIndex];
+    ASSERT(arraySignature.is<WasmGCArrayType>());
 
     JSValue arrayRef = JSValue::decode(arrayValue);
     ASSERT(arrayRef.isObject());
     JSWebAssemblyArray* arrayObject = jsCast<JSWebAssemblyArray*>(arrayRef.getObject());
 
-    Wasm::FieldType elementType = arraySignature.as<ArrayType>()->elementType();
+    Wasm::FieldType elementType = arraySignature.as<WasmGCArrayType>()->elementType();
     if (elementType.type.unpacked().isV128())
         arrayObject->set(instance->vm(), index, value->v128);
     else
@@ -466,8 +467,8 @@ inline JSValue structNew(JSWebAssemblyInstance* instance, WebAssemblyGCStructure
     JSGlobalObject* globalObject = instance->globalObject();
     VM& vm = globalObject->vm();
 
-    ASSERT(structure->typeDefinition().is<StructType>());
-    const StructType& structType = *structure->typeDefinition().as<StructType>();
+    ASSERT(structure->typeDefinition().is<WasmGCStructType>());
+    const WasmGCStructType& structType = *structure->typeDefinition().as<WasmGCStructType>();
     JSWebAssemblyStruct* structValue = JSWebAssemblyStruct::create(vm, structure);
     if (static_cast<Wasm::UseDefaultValue>(useDefault) == Wasm::UseDefaultValue::Yes) {
         for (unsigned i = 0; i < structType.fieldCount(); ++i) {

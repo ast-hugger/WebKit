@@ -29,9 +29,9 @@
 #if ENABLE(WEBASSEMBLY)
 
 #include "WasmFormat.h"
+#include "WasmGCType.h"
 #include "WasmLimits.h"
 #include "WasmOps.h"
-#include "WasmTypeDefinition.h"
 #include "WebAssemblyGCObjectBase.h"
 
 WTF_ALLOW_UNSAFE_BUFFER_USAGE_BEGIN
@@ -53,13 +53,13 @@ public:
     DECLARE_INFO;
 
     static inline TypeInfoBlob typeInfoBlob();
-    static inline WebAssemblyGCStructure* createStructure(VM&, JSGlobalObject*, Ref<const Wasm::TypeDefinition>&&, Ref<const Wasm::RTT>&&);
+    static inline WebAssemblyGCStructure* createStructure(VM&, JSGlobalObject*, const Wasm::WasmGCType*, Ref<const Wasm::RTT>&&);
 
     static JSWebAssemblyArray* tryCreate(VM& vm, WebAssemblyGCStructure* structure, unsigned size);
 
     DECLARE_VISIT_CHILDREN;
 
-    static Wasm::FieldType elementType(const WebAssemblyGCStructure* structure) { return structure->typeDefinition().as<Wasm::ArrayType>()->elementType(); }
+    static Wasm::FieldType elementType(const WebAssemblyGCStructure* structure) { return structure->typeDefinition().as<Wasm::WasmGCArrayType>()->elementType(); }
     Wasm::FieldType elementType() const { return elementType(gcStructure()); }
     static bool needsAlignmentCheck(Wasm::StorageType type) { return type.unpacked().isV128(); }
     size_t size() const { return m_size; }

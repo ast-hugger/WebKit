@@ -29,6 +29,7 @@
 #if ENABLE(WEBASSEMBLY_DEBUGGER)
 
 #include "Options.h"
+#include "WasmGCType.h"
 #include "WasmIPIntGenerator.h"
 #include "WasmModuleInformation.h"
 #include <wtf/DataLog.h>
@@ -37,7 +38,7 @@
 // Forward declaration to ensure proper linkage
 namespace JSC {
 namespace Wasm {
-void parseForDebugInfo(std::span<const uint8_t>, const TypeDefinition&, ModuleInformation&, FunctionCodeIndex, FunctionDebugInfo&);
+void parseForDebugInfo(std::span<const uint8_t>, const WasmGCType&, ModuleInformation&, FunctionCodeIndex, FunctionDebugInfo&);
 }
 }
 
@@ -79,8 +80,8 @@ FunctionDebugInfo& ModuleDebugInfo::ensureFunctionDebugInfo(FunctionCodeIndex fu
     auto& info = functionIndexToData.add(functionIndex, FunctionDebugInfo()).iterator->value;
     auto functionData = source.subspan(function.start, function.data.size());
 
-    Ref typeDefinition = TypeInformation::get(typeIndex);
-    parseForDebugInfo(functionData, typeDefinition, moduleInfo, functionIndex, info);
+    const WasmGCType* typeDefinition = WasmGCType::fromIndex(typeIndex);
+    parseForDebugInfo(functionData, *typeDefinition, moduleInfo, functionIndex, info);
     dataLogLnIf(Options::verboseWasmDebugger(), "[ModuleDebugInfo] Debug info collection completed for function ", functionIndex, " with ", info.offsetToNextInstructions.size(), " instruction mappings and ", info.locals.size(), " locals");
     return info;
 }

@@ -44,6 +44,7 @@
 #include "RegExpObject.h"
 #include "StringPrototypeInlines.h"
 #include "WasmCallingConvention.h"
+#include "WasmGCType.h"
 #include "WebAssemblyFunction.h"
 #include <cstdlib>
 #include <wtf/text/MakeString.h>
@@ -1632,7 +1633,7 @@ private:
                 auto* wasmFunction = jsDynamicCast<WebAssemblyFunction*>(function);
                 if (!wasmFunction)
                     break;
-                const auto& signature = Wasm::TypeInformation::getFunctionSignature(wasmFunction->typeIndex());
+                const auto& signature = *Wasm::WasmGCType::fromIndex(wasmFunction->typeIndex())->as<Wasm::WasmGCFunctionType>();
                 if (signature.argumentsOrResultsIncludeV128() || signature.argumentsOrResultsIncludeExnref())
                     break;
 

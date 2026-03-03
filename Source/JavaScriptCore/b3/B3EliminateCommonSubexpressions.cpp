@@ -982,7 +982,7 @@ private:
         auto replace = [&](Value* dominatingMatch, Vector<Value*, 16>& extraValues) -> Value* {
             if (auto* structSet = dominatingMatch->as<WasmStructSetValue>()) {
                 Value* storedValue = structSet->child(1);
-                SUPPRESS_UNCOUNTED_LOCAL const Wasm::StructType* structType = structGet->structType();
+                SUPPRESS_UNCOUNTED_LOCAL const Wasm::WasmGCStructType* structType = structGet->structType();
                 auto fieldType = structType->field(structGet->fieldIndex()).type;
 
                 Value* forwardedValue = storedValue;

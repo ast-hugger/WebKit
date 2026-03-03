@@ -32,6 +32,8 @@
 #include "JSWebAssemblyGlobal.h"
 #include "JSWebAssemblyHelpers.h"
 #include "JSWebAssemblyRuntimeError.h"
+#include "WasmGCType.h"
+#include "WasmGCTypeRegistry.h"
 #include "WasmTypeDefinitionInlines.h"
 #include <wtf/StdLibExtras.h>
 #include <wtf/TZoneMallocInlines.h>
@@ -39,6 +41,22 @@
 namespace JSC { namespace Wasm {
 
 WTF_MAKE_TZONE_ALLOCATED_IMPL(Global);
+
+Global::~Global()
+{
+    if (!m_typeRootSet.isEmpty())
+        WasmGCTypeRegistry::singleton().deregisterRootSet(&m_typeRootSet);
+}
+
+void Global::registerTypeIfNeeded()
+{
+    if (!isRefWithTypeIndex(m_type))
+        return;
+    m_typeRootSet.append(WasmGCType::fromIndex(m_type.index));
+    WasmGCTypeRegistry& registry = WasmGCTypeRegistry::singleton();
+    Locker locker { registry.lock() };
+    registry.registerRootSet(&m_typeRootSet);
+}
 
 JSValue Global::get(JSGlobalObject* globalObject) const
 {
@@ -118,7 +136,7 @@ void Global::set(JSGlobalObject* globalObject, JSValue argument)
                 return;
             }
             m_value.m_externref.set(m_owner->vm(), m_owner, argument);
-        } else if (isFuncref(m_type) || (isRefWithTypeIndex(m_type) && TypeInformation::get(m_type.index).is<FunctionSignature>())) {
+        } else if (isFuncref(m_type) || (isRefWithTypeIndex(m_type) && WasmGCType::fromIndex(m_type.index)->is<WasmGCFunctionType>())) {
             RELEASE_ASSERT(m_owner);
             WebAssemblyFunction* wasmFunction = nullptr;
             WebAssemblyWrapperFunction* wasmWrapperFunction = nullptr;

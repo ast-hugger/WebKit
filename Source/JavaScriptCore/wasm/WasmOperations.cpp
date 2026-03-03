@@ -48,6 +48,7 @@
 #include "WasmCallee.h"
 #include "WasmCallingConvention.h"
 #include "WasmContext.h"
+#include "WasmGCType.h"
 #include "WasmMemory.h"
 #include "WasmModuleInformation.h"
 #include "WasmOMGPlan.h"
@@ -95,8 +96,7 @@ JSC_DEFINE_JIT_OPERATION(operationJSToWasmEntryWrapperBuildFrame, JSToWasmCallee
 
     auto calleeSPOffsetFromFP = -(static_cast<intptr_t>(callee->frameSize()) + JSToWasmCallee::SpillStackSpaceAligned - JSToWasmCallee::RegisterStackSpaceAligned);
 
-    const TypeDefinition& signature = TypeInformation::get(function->typeIndex()).expand();
-    const FunctionSignature& functionSignature = *signature.as<FunctionSignature>();
+    const WasmGCFunctionType& functionSignature = *WasmGCType::fromIndex(function->typeIndex())->as<WasmGCFunctionType>();
 
     if (functionSignature.argumentsOrResultsIncludeV128() || functionSignature.argumentsOrResultsIncludeExnref()) [[unlikely]] {
         throwVMTypeError(globalObject, scope, Wasm::errorMessageForExceptionType(Wasm::ExceptionType::TypeErrorInvalidValueUse));
@@ -108,7 +108,7 @@ JSC_DEFINE_JIT_OPERATION(operationJSToWasmEntryWrapperBuildFrame, JSToWasmCallee
         return &reinterpret_cast<V*>(arr)[i / sizeof(V)];
     };
 
-    CallInformation wasmFrameConvention = wasmCallingConvention().callInformationFor(signature, CallRole::Caller);
+    CallInformation wasmFrameConvention = wasmCallingConvention().callInformationFor(functionSignature, CallRole::Caller);
     uint64_t* registerSpace = reinterpret_cast<uint64_t*>(sp);
     for (unsigned i = 0; i < functionSignature.argumentCount(); ++i) {
         JSValue jsArg = callFrame->argument(i);
@@ -161,8 +161,7 @@ JSC_DEFINE_JIT_OPERATION(operationJSToWasmEntryWrapperBuildReturnFrame, EncodedJ
 
     auto scope = DECLARE_THROW_SCOPE(vm);
 
-    const TypeDefinition& signature = TypeInformation::get(callee->typeIndex()).expand();
-    const FunctionSignature& functionSignature = *signature.as<FunctionSignature>();
+    const WasmGCFunctionType& functionSignature = *WasmGCType::fromIndex(callee->typeIndex())->as<WasmGCFunctionType>();
 
     auto access = [sp, callFrame]<typename V>(auto* arr, int i) -> V* {
         dataLogLnIf(WasmOperationsInternal::verbose, "fp[", (&reinterpret_cast<uint8_t*>(arr)[i / sizeof(uint8_t)] - reinterpret_cast<uint8_t*>(callFrame)), "] sp[", (&reinterpret_cast<uint8_t*>(arr)[i / sizeof(uint8_t)] - reinterpret_cast<uint8_t*>(sp)), "](", reinterpret_cast<V*>(arr)[i / sizeof(V)], ")");
@@ -174,7 +173,7 @@ JSC_DEFINE_JIT_OPERATION(operationJSToWasmEntryWrapperBuildReturnFrame, EncodedJ
 
     if (functionSignature.returnCount() == 1) {
         if constexpr (WasmOperationsInternal::verbose) {
-            CallInformation wasmFrameConvention = wasmCallingConvention().callInformationFor(signature, CallRole::Caller);
+            CallInformation wasmFrameConvention = wasmCallingConvention().callInformationFor(functionSignature, CallRole::Caller);
             dataLogLn("* Register Return ", wasmFrameConvention.results[0].location);
         }
 
@@ -197,7 +196,7 @@ JSC_DEFINE_JIT_OPERATION(operationJSToWasmEntryWrapperBuildReturnFrame, EncodedJ
         OPERATION_RETURN(scope, JSValue::encode(result));
     }
 
-    CallInformation wasmFrameConvention = wasmCallingConvention().callInformationFor(signature, CallRole::Caller);
+    CallInformation wasmFrameConvention = wasmCallingConvention().callInformationFor(functionSignature, CallRole::Caller);
     IndexingType indexingType = ArrayWithUndecided;
     for (unsigned i = 0; i < functionSignature.returnCount(); ++i) {
         Type type = functionSignature.returnType(i);
@@ -277,11 +276,10 @@ JSC_DEFINE_JIT_OPERATION(operationJSToWasmEntryWrapperBuildReturnFrame, EncodedJ
 JSC_DEFINE_NOEXCEPT_JIT_OPERATION(operationGetWasmCalleeStackSize, UCPUStrictInt32, (JSWebAssemblyInstance*, WasmCallableFunction* functionInfo))
 {
     auto typeIndex = static_cast<WasmOrJSImportableFunctionCallLinkInfo*>(functionInfo)->typeIndex;
-    const TypeDefinition& typeDefinition = TypeInformation::get(typeIndex).expand();
-    const auto& signature = *typeDefinition.as<FunctionSignature>();
+    const auto& signature = *WasmGCType::fromIndex(typeIndex)->as<WasmGCFunctionType>();
     unsigned argCount = signature.argumentCount();
     const auto& wasmCC = wasmCallingConvention();
-    CallInformation wasmCallInfo = wasmCC.callInformationFor(typeDefinition, CallRole::Callee);
+    CallInformation wasmCallInfo = wasmCC.callInformationFor(signature, CallRole::Callee);
     RegisterAtOffsetList savedResultRegisters = wasmCallInfo.computeResultsOffsetList();
 
     const unsigned numberOfParameters = argCount + 1; // There is a "this" argument.
@@ -319,8 +317,7 @@ JSC_DEFINE_JIT_OPERATION(operationWasmToJSExitMarshalArguments, void, (void* sp,
 
     auto* importableFunction = *access.operator()<WasmOrJSImportableFunctionCallLinkInfo*>(callFrame, WasmToJSCallableFunctionSlot);
     auto typeIndex = importableFunction->typeIndex;
-    const TypeDefinition& typeDefinition = TypeInformation::get(typeIndex).expand();
-    const auto& signature = *typeDefinition.as<FunctionSignature>();
+    const auto& signature = *WasmGCType::fromIndex(typeIndex)->as<WasmGCFunctionType>();
     unsigned argCount = signature.argumentCount();
 
     if (signature.argumentsOrResultsIncludeV128() || signature.argumentsOrResultsIncludeExnref()) [[unlikely]] {
@@ -328,8 +325,8 @@ JSC_DEFINE_JIT_OPERATION(operationWasmToJSExitMarshalArguments, void, (void* sp,
         OPERATION_RETURN(scope);
     }
 
-    const auto& wasmCC = wasmCallingConvention().callInformationFor(typeDefinition, CallRole::Callee);
-    const auto& jsCC = jsCallingConvention().callInformationFor(typeDefinition, CallRole::Callee);
+    const auto& wasmCC = wasmCallingConvention().callInformationFor(signature, CallRole::Callee);
+    const auto& jsCC = jsCallingConvention().callInformationFor(signature, CallRole::Callee);
 
     for (unsigned argNum = 0; argNum < argCount; ++argNum) {
         Type argType = signature.argumentType(argNum);
@@ -479,12 +476,11 @@ JSC_DEFINE_JIT_OPERATION(operationWasmToJSExitMarshalReturnValues, void, (void* 
 
     auto* importableFunction = *access.operator()<WasmOrJSImportableFunctionCallLinkInfo*>(callFrame, WasmToJSCallableFunctionSlot);
     auto typeIndex = importableFunction->typeIndex;
-    const TypeDefinition& typeDefinition = TypeInformation::get(typeIndex).expand();
-    const auto& signature = *typeDefinition.as<FunctionSignature>();
+    const auto& signature = *WasmGCType::fromIndex(typeIndex)->as<WasmGCFunctionType>();
 
     auto* globalObject = instance->globalObject();
 
-    auto wasmCC = wasmCallingConvention().callInformationFor(typeDefinition, CallRole::Callee);
+    auto wasmCC = wasmCallingConvention().callInformationFor(signature, CallRole::Callee);
 
     JSValue returned = *(reinterpret_cast<JSValue*>(registerSpace));
 
@@ -1310,7 +1306,7 @@ JSC_DEFINE_JIT_OPERATION(operationConvertToF32, float, (JSWebAssemblyInstance* i
     OPERATION_RETURN(scope, static_cast<float>(JSValue::decode(v).toNumber(globalObject)));
 }
 
-JSC_DEFINE_JIT_OPERATION(operationConvertToFuncref, EncodedJSValue, (JSWebAssemblyInstance* instance, const TypeDefinition* type, EncodedJSValue v))
+JSC_DEFINE_JIT_OPERATION(operationConvertToFuncref, EncodedJSValue, (JSWebAssemblyInstance* instance, const WasmGCType* type, EncodedJSValue v))
 {
     CallFrame* callFrame = DECLARE_WASM_CALL_FRAME(instance);
     assertCalleeIsReferenced(callFrame, instance);
@@ -1325,7 +1321,7 @@ JSC_DEFINE_JIT_OPERATION(operationConvertToFuncref, EncodedJSValue, (JSWebAssemb
     if (!isWebAssemblyHostFunction(value, wasmFunction, wasmWrapperFunction) && !value.isNull()) [[unlikely]]
         OPERATION_RETURN(scope, throwVMTypeError(globalObject, scope, "Argument value did not match the reference type"_s));
 
-    const FunctionSignature* signature = type->as<FunctionSignature>();
+    const WasmGCFunctionType* signature = type->as<WasmGCFunctionType>();
     ASSERT(signature->returnCount() == 1);
     Type resultType = signature->returnType(0);
 
@@ -1339,7 +1335,7 @@ JSC_DEFINE_JIT_OPERATION(operationConvertToFuncref, EncodedJSValue, (JSWebAssemb
     OPERATION_RETURN(scope, v);
 }
 
-JSC_DEFINE_JIT_OPERATION(operationConvertToAnyref, EncodedJSValue, (JSWebAssemblyInstance* instance, const TypeDefinition* type, EncodedJSValue v))
+JSC_DEFINE_JIT_OPERATION(operationConvertToAnyref, EncodedJSValue, (JSWebAssemblyInstance* instance, const WasmGCType* type, EncodedJSValue v))
 {
     CallFrame* callFrame = DECLARE_WASM_CALL_FRAME(instance);
     assertCalleeIsReferenced(callFrame, instance);
@@ -1348,7 +1344,7 @@ JSC_DEFINE_JIT_OPERATION(operationConvertToAnyref, EncodedJSValue, (JSWebAssembl
     WasmOperationPrologueCallFrameTracer tracer(vm, callFrame, OUR_RETURN_ADDRESS);
     auto scope = DECLARE_THROW_SCOPE(vm);
 
-    const FunctionSignature* signature = type->as<FunctionSignature>();
+    const WasmGCFunctionType* signature = type->as<WasmGCFunctionType>();
     ASSERT(signature->returnCount() == 1);
     Type resultType = signature->returnType(0);
 
@@ -1372,7 +1368,7 @@ JSC_DEFINE_JIT_OPERATION(operationConvertToBigInt, EncodedJSValue, (JSWebAssembl
 }
 
 // https://webassembly.github.io/multi-value/js-api/index.html#run-a-host-function
-JSC_DEFINE_JIT_OPERATION(operationIterateResults, void, (JSWebAssemblyInstance* instance, const TypeDefinition* type, EncodedJSValue encResult, uint64_t* registerResults, uint64_t* calleeFramePointer))
+JSC_DEFINE_JIT_OPERATION(operationIterateResults, void, (JSWebAssemblyInstance* instance, const WasmGCType* type, EncodedJSValue encResult, uint64_t* registerResults, uint64_t* calleeFramePointer))
 {
     CallFrame* callFrame = DECLARE_WASM_CALL_FRAME(instance);
     assertCalleeIsReferenced(callFrame, instance);
@@ -1381,7 +1377,7 @@ JSC_DEFINE_JIT_OPERATION(operationIterateResults, void, (JSWebAssemblyInstance* 
     WasmOperationPrologueCallFrameTracer tracer(vm, callFrame, OUR_RETURN_ADDRESS);
     auto scope = DECLARE_THROW_SCOPE(vm);
 
-    const FunctionSignature* signature = type->as<FunctionSignature>();
+    const WasmGCFunctionType* signature = type->as<WasmGCFunctionType>();
 
     auto wasmCallInfo = wasmCallingConvention().callInformationFor(*type, CallRole::Callee);
     RegisterAtOffsetList registerResultOffsets = wasmCallInfo.computeResultsOffsetList();
@@ -1480,7 +1476,7 @@ JSC_DEFINE_JIT_OPERATION(operationIterateResults, void, (JSWebAssemblyInstance* 
 // FIXME: It would be much easier to inline this when we have a global GC, which could probably mean we could avoid
 // spilling the results onto the stack.
 // Saved result registers should be placed on the stack just above the last stack result.
-JSC_DEFINE_JIT_OPERATION(operationAllocateResultsArray, JSArray*, (JSWebAssemblyInstance* instance, const FunctionSignature* signature, IndexingType indexingType, JSValue* stackPointerFromCallee))
+JSC_DEFINE_JIT_OPERATION(operationAllocateResultsArray, JSArray*, (JSWebAssemblyInstance* instance, const WasmGCFunctionType* signature, IndexingType indexingType, JSValue* stackPointerFromCallee))
 {
     CallFrame* callFrame = DECLARE_WASM_CALL_FRAME(instance);
     assertCalleeIsReferenced(callFrame, instance);
@@ -1873,7 +1869,7 @@ JSC_DEFINE_NOEXCEPT_JIT_OPERATION(operationWasmRefTest, UCPUStrictInt32, (JSWebA
     }
 
     auto& info = instance->module().moduleInformation();
-    bool result = Wasm::refCast(reference, static_cast<bool>(allowNull), info.typeSignatures[heapType]->index(), info.rtts[heapType].ptr());
+    bool result = Wasm::refCast(reference, static_cast<bool>(allowNull), info.gcTypeSignatures[heapType]->index(), info.gcTypeSignatures[heapType]->m_rtt.get());
     return toUCPUStrictInt32(result ? truth : falsity);
 }
 
@@ -1886,7 +1882,7 @@ JSC_DEFINE_NOEXCEPT_JIT_OPERATION(operationWasmRefCast, EncodedJSValue, (JSWebAs
     }
 
     auto& info = instance->module().moduleInformation();
-    if (!Wasm::refCast(reference, static_cast<bool>(allowNull), info.typeSignatures[heapType]->index(), info.rtts[heapType].ptr())) [[unlikely]]
+    if (!Wasm::refCast(reference, static_cast<bool>(allowNull), info.gcTypeSignatures[heapType]->index(), info.gcTypeSignatures[heapType]->m_rtt.get())) [[unlikely]]
         return encodedJSValue();
     return reference;
 }

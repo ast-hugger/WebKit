@@ -60,6 +60,7 @@
 #include "StringPrototypeInlines.h"
 #include "StructureCache.h"
 #include "StructureRareDataInlines.h"
+#include "WasmGCType.h"
 #include "WasmTypeDefinitionInlines.h"
 #include "WebAssemblyModuleRecord.h"
 #include <wtf/BooleanLattice.h>
@@ -5574,7 +5575,7 @@ bool AbstractInterpreter<AbstractStateType>::executeEffects(unsigned clobberLimi
         clobberWorld();
 
         WebAssemblyFunction* wasmFunction = node->castOperand<WebAssemblyFunction*>();
-        const auto& signature = Wasm::TypeInformation::getFunctionSignature(wasmFunction->typeIndex());
+        const auto& signature = *Wasm::WasmGCType::fromIndex(wasmFunction->typeIndex())->as<Wasm::WasmGCFunctionType>();
         if (signature.returnsVoid()) {
             setConstant(node, jsUndefined());
             break;

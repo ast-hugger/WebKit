@@ -524,7 +524,12 @@ void BBQJIT::emitCCall(Func function, const Vector<Value, N>& arguments)
     auto argumentTypes = WTF::map<16>(arguments, [](auto& value) {
         return Type { value.type(), 0u };
     });
-    RefPtr<TypeDefinition> functionType = TypeInformation::typeDefinitionForFunction(resultTypes, argumentTypes);
+    WasmGCFunctionType* functionType = WasmGCFunctionType::tryCreate(resultTypes.size(), argumentTypes.size());
+    RELEASE_ASSERT(functionType);
+    for (FunctionArgCount i = 0; i < resultTypes.size(); ++i)
+        functionType->getReturnType(i) = resultTypes[i];
+    for (FunctionArgCount i = 0; i < argumentTypes.size(); ++i)
+        functionType->getArgumentType(i) = argumentTypes[i];
     CallInformation callInfo = wasmCallingConvention().callInformationFor(*functionType, CallRole::Caller);
     Checked<int32_t> calleeStackSize = WTF::roundUpToMultipleOf<stackAlignmentBytes()>(callInfo.headerAndArgumentStackSizeInBytes);
     m_maxCalleeStackSize = std::max<int>(calleeStackSize, m_maxCalleeStackSize);
@@ -535,6 +540,8 @@ void BBQJIT::emitCCall(Func function, const Vector<Value, N>& arguments)
     // Preserve caller-saved registers and other info
     prepareForExceptions();
     saveValuesAcrossCallAndPassArguments(arguments, callInfo, *functionType);
+
+    functionType->destroy();
 
     // Materialize address of native function and call register
     void* taggedFunctionPtr = tagCFunctionPtr<void*, OperationPtrTag>(function);
@@ -553,7 +560,12 @@ void BBQJIT::emitCCall(Func function, const Vector<Value, N>& arguments, Value& 
         return Type { value.type(), 0u };
     });
 
-    RefPtr<TypeDefinition> functionType = TypeInformation::typeDefinitionForFunction(resultTypes, argumentTypes);
+    WasmGCFunctionType* functionType = WasmGCFunctionType::tryCreate(resultTypes.size(), argumentTypes.size());
+    RELEASE_ASSERT(functionType);
+    for (FunctionArgCount i = 0; i < resultTypes.size(); ++i)
+        functionType->getReturnType(i) = resultTypes[i];
+    for (FunctionArgCount i = 0; i < argumentTypes.size(); ++i)
+        functionType->getArgumentType(i) = argumentTypes[i];
     CallInformation callInfo = wasmCallingConvention().callInformationFor(*functionType, CallRole::Caller);
     Checked<int32_t> calleeStackSize = WTF::roundUpToMultipleOf<stackAlignmentBytes()>(callInfo.headerAndArgumentStackSizeInBytes);
     m_maxCalleeStackSize = std::max<int>(calleeStackSize, m_maxCalleeStackSize);
@@ -564,6 +576,8 @@ void BBQJIT::emitCCall(Func function, const Vector<Value, N>& arguments, Value& 
     // Preserve caller-saved registers and other info
     prepareForExceptions();
     saveValuesAcrossCallAndPassArguments(arguments, callInfo, *functionType);
+
+    functionType->destroy();
 
     // Materialize address of native function and call register
     void* taggedFunctionPtr = tagCFunctionPtr<void*, OperationPtrTag>(function);

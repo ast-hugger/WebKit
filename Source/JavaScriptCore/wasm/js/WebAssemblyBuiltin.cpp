@@ -33,6 +33,7 @@
 #include "JSWebAssemblyArrayInlines.h"
 #include "JSWebAssemblyInstance.h"
 #include "JSWebAssemblyRuntimeError.h"
+#include "WasmGCType.h"
 #include <wtf/Vector.h>
 #include <wtf/text/MakeString.h>
 
@@ -158,16 +159,16 @@ bool WebAssemblyArrayMutI16TypeExpectation::isValid(const Wasm::Type& type) cons
 {
     if (!type.isRefNull())
         return false;
-    Ref<const Wasm::TypeDefinition> referentType = Wasm::TypeInformation::get(type.index);
-    if (!referentType->is<Wasm::ArrayType>())
+    const Wasm::WasmGCType* referentType = Wasm::WasmGCType::fromIndex(type.index);
+    if (!referentType->is<Wasm::WasmGCArrayType>())
         return false;
-    Wasm::FieldType elementType = referentType->as<Wasm::ArrayType>()->elementType();
+    Wasm::FieldType elementType = referentType->as<Wasm::WasmGCArrayType>()->elementType();
     return elementType.mutability == Wasm::Mutability::Mutable
         && elementType.type.is<Wasm::PackedType>()
         && elementType.type.as<Wasm::PackedType>() == Wasm::PackedType::I16;
 }
 
-bool WebAssemblyBuiltinSignature::isValid(const Wasm::FunctionSignature& sig) const
+bool WebAssemblyBuiltinSignature::isValid(const Wasm::WasmGCFunctionType& sig) const
 {
     if (sig.returnCount() != m_results.size() || sig.argumentCount() != m_params.size())
         return false;

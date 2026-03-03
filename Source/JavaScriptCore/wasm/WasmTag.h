@@ -27,7 +27,7 @@
 
 #if ENABLE(WEBASSEMBLY)
 
-#include "WasmTypeDefinition.h"
+#include "WasmGCType.h"
 #include <wtf/TZoneMalloc.h>
 
 namespace JSC { namespace Wasm {
@@ -36,37 +36,47 @@ class Tag final : public ThreadSafeRefCounted<Tag> {
     WTF_MAKE_TZONE_ALLOCATED(Tag);
     WTF_MAKE_NONCOPYABLE(Tag);
 public:
-    static Ref<Tag> create(Ref<const TypeDefinition>&& type) { return adoptRef(*new Tag(WTF::move(type))); }
+    // Use for types owned by the registry (module-declared tags).
+    static Ref<Tag> create(const WasmGCFunctionType* type) { return adoptRef(*new Tag(type, false)); }
+    // Use for synthetic types not in the registry (JS-created tags).
+    static Ref<Tag> createOwning(const WasmGCFunctionType* type) { return adoptRef(*new Tag(type, true)); }
 
-    FunctionArgCount parameterCount() const { return m_type->as<FunctionSignature>()->argumentCount(); }
+    ~Tag()
+    {
+        if (m_ownsType)
+            const_cast<WasmGCFunctionType*>(m_type)->destroy();
+    }
+
+    FunctionArgCount parameterCount() const { return m_type->argumentCount(); }
 
     size_t parameterBufferSize() const
     {
         size_t result = 0;
         for (size_t i = 0; i < parameterCount(); i ++)
-            result += m_type->as<FunctionSignature>()->argumentType(i).kind == TypeKind::V128 ? 2 : 1;
+            result += m_type->argumentType(i).kind == TypeKind::V128 ? 2 : 1;
         return result;
     }
 
-    Type parameter(FunctionArgCount i) const { return m_type->as<FunctionSignature>()->argumentType(i); }
+    Type parameter(FunctionArgCount i) const { return m_type->argumentType(i); }
     TypeIndex typeIndex() const { return m_type->index(); }
 
     // Since (1) we do not copy Wasm::Tag and (2) we always allocate Wasm::Tag from heap, we can use
     // pointer comparison for identity check.
     bool operator==(const Tag& other) const { return this == &other; }
 
-    const FunctionSignature& type() const { return *m_type->as<FunctionSignature>(); }
+    const WasmGCFunctionType& type() const { return *m_type; }
 
     static Tag& jsExceptionTag();
 
 private:
-    Tag(Ref<const TypeDefinition>&& type)
-        : m_type(WTF::move(type))
+    Tag(const WasmGCFunctionType* type, bool ownsType)
+        : m_type(type)
+        , m_ownsType(ownsType)
     {
-        ASSERT(m_type->is<FunctionSignature>());
     }
 
-    const Ref<const TypeDefinition> m_type;
+    const WasmGCFunctionType* m_type;
+    bool m_ownsType;
 };
 
 } } // namespace JSC::Wasm

@@ -46,6 +46,7 @@ public:
 
     void append(WasmGCType* type) { m_types.append(type); }
     void clear() { m_types.clear(); }
+    bool isEmpty() const { return m_types.isEmpty(); }
     std::span<WasmGCType* const> types() const { return m_types.span(); }
     size_t size() const { return m_types.size(); }
 

@@ -27,6 +27,8 @@
 #include "config.h"
 #include "WasmFunctionIPIntMetadataGenerator.h"
 
+#include "WasmGCType.h"
+#include "WasmGCTypeRegistry.h"
 #include <numeric>
 #include <wtf/TZoneMallocInlines.h>
 
@@ -40,10 +42,10 @@ namespace Wasm {
 
 WTF_MAKE_TZONE_ALLOCATED_IMPL(FunctionIPIntMetadataGenerator);
 
-const RTT* FunctionIPIntMetadataGenerator::addSignature(const TypeDefinition& signature)
+const RTT* FunctionIPIntMetadataGenerator::addSignature(const WasmGCType& signature)
 {
     // This is held by wasm module.
-    return TypeInformation::getCanonicalRTT(signature.index()).unsafePtr();
+    return WasmGCTypeRegistry::singleton().getCanonicalRTT(WasmGCType::fromIndex(signature.index())).unsafePtr();
 }
 
 void FunctionIPIntMetadataGenerator::setTailCall(uint32_t functionIndex, bool isImportedFunctionFromFunctionIndexSpace)
@@ -135,7 +137,7 @@ void FunctionIPIntMetadataGenerator::addLEB128V128Constant(v128_t value, size_t 
     WRITE_TO_METADATA(m_metadata.mutableSpan().data() + size, mdConst, IPInt::Const128Metadata);
 }
 
-void FunctionIPIntMetadataGenerator::addReturnData(const FunctionSignature& sig, const CallInformation& returnCC)
+void FunctionIPIntMetadataGenerator::addReturnData(const WasmGCFunctionType& sig, const CallInformation& returnCC)
 {
     m_uINTBytecode.reserveInitialCapacity(sig.returnCount() + 1);
     // uINT: the interpreter smaller than mINT

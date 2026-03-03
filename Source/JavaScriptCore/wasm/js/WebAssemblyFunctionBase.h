@@ -31,6 +31,7 @@
 
 #include <JavaScriptCore/JSFunction.h>
 #include <JavaScriptCore/WasmFormat.h>
+#include <JavaScriptCore/WasmGCType.h>
 
 namespace JSC {
 
@@ -59,7 +60,7 @@ public:
     CalleeBits boxedCallee() const { return m_importableFunction.boxedCallee; }
     const Wasm::WasmOrJSImportableFunction& importableFunction() const { return m_importableFunction; }
     const Wasm::RTT* rtt() const { return m_importableFunction.rtt; }
-    const Wasm::FunctionSignature& signature() const;
+    const Wasm::WasmGCFunctionType& signature() const;
     WasmOrJSImportableFunctionCallLinkInfo* callLinkInfo() const { return m_callLinkInfo; }
 
     static constexpr ptrdiff_t offsetOfImportableFunction() { return OBJECT_OFFSETOF(WebAssemblyFunctionBase, m_importableFunction); }

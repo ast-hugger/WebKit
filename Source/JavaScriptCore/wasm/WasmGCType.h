@@ -73,6 +73,8 @@ public:
     WasmGCTypeKind typeKind() const { return m_kind; }
     TypeIndex index() const { return std::bit_cast<TypeIndex>(this); }
 
+    static WasmGCType* fromIndex(TypeIndex index) { return std::bit_cast<WasmGCType*>(index); }
+
     bool isFinal() const { return m_isFinal; }
     void setIsFinal(bool value) { m_isFinal = value; }
 
@@ -121,6 +123,7 @@ public:
 
     FunctionArgCount argumentCount() const { return m_argCount; }
     FunctionArgCount returnCount() const { return m_retCount; }
+    bool returnsVoid() const { return !returnCount(); }
 
     Type returnType(FunctionArgCount i) const { ASSERT(i < returnCount()); return *storage(i); }
     Type argumentType(FunctionArgCount i) const { ASSERT(i < argumentCount()); return *storage(returnCount() + i); }
@@ -130,6 +133,82 @@ public:
 
     Type* storage(FunctionArgCount i) { return payload() + i; }
     const Type* storage(FunctionArgCount i) const { return const_cast<WasmGCFunctionType*>(this)->storage(i); }
+
+    bool hasReturnVector() const
+    {
+        for (size_t i = 0; i < returnCount(); ++i) {
+            if (returnType(i).isV128())
+                return true;
+        }
+        return false;
+    }
+
+    size_t numVectors() const
+    {
+        size_t n = 0;
+        for (size_t i = 0; i < argumentCount(); ++i) {
+            if (argumentType(i).isV128())
+                ++n;
+        }
+        return n;
+    }
+
+    size_t numReturnVectors() const
+    {
+        size_t n = 0;
+        for (size_t i = 0; i < returnCount(); ++i) {
+            if (returnType(i).isV128())
+                ++n;
+        }
+        return n;
+    }
+
+    bool argumentsOrResultsIncludeV128() const
+    {
+        for (size_t i = 0; i < argumentCount(); ++i) {
+            if (argumentType(i).isV128())
+                return true;
+        }
+        for (size_t i = 0; i < returnCount(); ++i) {
+            if (returnType(i).isV128())
+                return true;
+        }
+        return false;
+    }
+
+    bool argumentsOrResultsIncludeI64() const
+    {
+        for (size_t i = 0; i < argumentCount(); ++i) {
+            if (argumentType(i).isI64())
+                return true;
+        }
+        for (size_t i = 0; i < returnCount(); ++i) {
+            if (returnType(i).isI64())
+                return true;
+        }
+        return false;
+    }
+
+    bool argumentsOrResultsIncludeExnref() const
+    {
+        for (size_t i = 0; i < argumentCount(); ++i) {
+            Type t = argumentType(i);
+            if ((t.isRef() || t.isRefNull()) && t.index == static_cast<TypeIndex>(TypeKind::Exnref))
+                return true;
+        }
+        for (size_t i = 0; i < returnCount(); ++i) {
+            Type t = returnType(i);
+            if ((t.isRef() || t.isRefNull()) && t.index == static_cast<TypeIndex>(TypeKind::Exnref))
+                return true;
+        }
+        return false;
+    }
+
+#if ENABLE(JIT)
+    CodePtr<JSEntryPtrTag> jsToWasmICEntrypoint() const;
+    mutable RefPtr<JSToWasmICCallee> m_jsToWasmICCallee;
+    mutable Lock m_jitCodeLock;
+#endif
 
     JS_EXPORT_PRIVATE void dump(WTF::PrintStream& out) const;
 
@@ -159,6 +238,16 @@ public:
     StructFieldCount fieldCount() const { return m_fieldCount; }
     const FieldType& field(StructFieldCount i) const { return fields()[i]; }
     std::span<const FieldType> fields() const { return { payload(), m_fieldCount }; }
+
+    bool hasRefFieldTypes() const
+    {
+        for (StructFieldCount i = 0; i < m_fieldCount; ++i) {
+            auto storageType = fields()[i].type;
+            if (storageType.is<Type>() && (storageType.as<Type>().isRef() || storageType.as<Type>().isRefNull()))
+                return true;
+        }
+        return false;
+    }
 
     unsigned offsetOfFieldInPayload(StructFieldCount i) const { return const_cast<WasmGCStructType*>(this)->fieldOffsetFromInstancePayload(i); }
     size_t instancePayloadSize() const { return m_instancePayloadSize; }

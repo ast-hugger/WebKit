@@ -37,6 +37,8 @@
 #include "MaxFrameExtentForSlowPathCall.h"
 #include "WasmCallingConvention.h"
 #include "WasmContext.h"
+#include "WasmGCType.h"
+#include "WasmGCTypeRegistry.h"
 #include "WasmOperations.h"
 #include "WasmThunks.h"
 #include "WasmToJS.h"
@@ -45,7 +47,7 @@
 namespace JSC {
 namespace Wasm {
 
-static void marshallJSResult(CCallHelpers& jit, const FunctionSignature& signature, const CallInformation& wasmFrameConvention, const RegisterAtOffsetList& savedResultRegisters, CCallHelpers::JumpList& exceptionChecks)
+static void marshallJSResult(CCallHelpers& jit, const WasmGCFunctionType& signature, const CallInformation& wasmFrameConvention, const RegisterAtOffsetList& savedResultRegisters, CCallHelpers::JumpList& exceptionChecks)
 {
     auto boxNativeCalleeResult = [](CCallHelpers& jit, Type type, ValueLocation src, JSValueRegs dst) {
         JIT_COMMENT(jit, "boxNativeCalleeResult ", type);
@@ -529,7 +531,7 @@ static size_t trampolineReservedStackSize()
     return (Options::softReservedZoneSize() - Options::reservedZoneSize()) / 2;
 }
 
-static RegisterAtOffsetList usedCalleeSaveRegisters(const Wasm::FunctionSignature& signature)
+static RegisterAtOffsetList usedCalleeSaveRegisters(const Wasm::WasmGCFunctionType& signature)
 {
     // Pessimistically save callee saves in BoundsChecking mode since the IPInt always bounds checks
     RegisterSet calleeSaves = RegisterSet::wasmPinnedRegisters();
@@ -542,7 +544,7 @@ static RegisterAtOffsetList usedCalleeSaveRegisters(const Wasm::FunctionSignatur
     return RegisterAtOffsetList { calleeSaves, RegisterAtOffsetList::OffsetBaseType::FramePointerBased };
 }
 
-CodePtr<JSEntryPtrTag> FunctionSignature::jsToWasmICEntrypoint() const
+CodePtr<JSEntryPtrTag> WasmGCFunctionType::jsToWasmICEntrypoint() const
 {
     if (m_jsToWasmICCallee) [[likely]] {
         ASSERT(m_jsToWasmICCallee->jsToWasm());
@@ -686,7 +688,7 @@ CodePtr<JSEntryPtrTag> FunctionSignature::jsToWasmICEntrypoint() const
         case Wasm::TypeKind::RefNull:
         case Wasm::TypeKind::Funcref:
         case Wasm::TypeKind::Externref: {
-            if (Wasm::isFuncref(type) || (Wasm::isRefWithTypeIndex(type) && Wasm::TypeInformation::get(type.index).is<Wasm::FunctionSignature>())) {
+            if (Wasm::isFuncref(type) || (Wasm::isRefWithTypeIndex(type) && Wasm::WasmGCType::fromIndex(type.index)->is<Wasm::WasmGCFunctionType>())) {
                 // Ensure we have a WASM exported function.
                 jit.loadValue(jsParam, scratchJSR);
                 auto isNull = jit.branchIfNull(scratchJSR);
@@ -705,7 +707,7 @@ CodePtr<JSEntryPtrTag> FunctionSignature::jsToWasmICEntrypoint() const
 
                 isWasmFunction.link(&jit);
                 if (Wasm::isRefWithTypeIndex(type)) {
-                    auto targetRTT = TypeInformation::getCanonicalRTT(type.index);
+                    auto targetRTT = WasmGCTypeRegistry::singleton().getCanonicalRTT(WasmGCType::fromIndex(type.index));
                     jit.loadPtr(jsParam, scratchJSR.payloadGPR());
                     jit.loadPtr(CCallHelpers::Address(scratchJSR.payloadGPR(), WebAssemblyFunctionBase::offsetOfRTT()), scratchJSR.payloadGPR());
                     slowPath.append(jit.branchPtr(CCallHelpers::NotEqual, scratchJSR.payloadGPR(), CCallHelpers::TrustedImmPtr(targetRTT.ptr())));

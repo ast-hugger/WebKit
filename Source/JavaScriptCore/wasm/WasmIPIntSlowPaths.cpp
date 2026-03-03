@@ -341,7 +341,7 @@ WASM_IPINT_EXTERN_CPP_DECL(epilogue_osr, CallFrame* callFrame)
 }
 #endif
 
-static void NODELETE copyExceptionStackToPayload(const Wasm::FunctionSignature& tagType, const IPIntStackEntry* stackPointer, FixedVector<uint64_t>& payload)
+static void NODELETE copyExceptionStackToPayload(const Wasm::WasmGCFunctionType& tagType, const IPIntStackEntry* stackPointer, FixedVector<uint64_t>& payload)
 {
     unsigned payloadIndex = payload.size();
     for (unsigned i = 0; i < tagType.argumentCount(); ++i) {
@@ -355,7 +355,7 @@ static void NODELETE copyExceptionStackToPayload(const Wasm::FunctionSignature& 
     ASSERT(!payloadIndex);
 }
 
-static void NODELETE copyExceptionPayloadToStack(const Wasm::FunctionSignature& tagType, const FixedVector<uint64_t>& payload, IPIntStackEntry* stackPointer)
+static void NODELETE copyExceptionPayloadToStack(const Wasm::WasmGCFunctionType& tagType, const FixedVector<uint64_t>& payload, IPIntStackEntry* stackPointer)
 {
     unsigned payloadIndex = payload.size();
     for (unsigned i = 0; i < tagType.argumentCount(); ++i) {
@@ -690,8 +690,8 @@ WASM_IPINT_EXTERN_CPP_DECL(array_new, uint32_t type, uint32_t size, IPIntStackEn
 {
     WasmSlowPathWithoutCallFrameTracer tracer(instance->vm());
     WebAssemblyGCStructure* structure = instance->gcObjectStructure(type);
-    const Wasm::TypeDefinition& arraySignature = structure->typeDefinition();
-    Wasm::StorageType elementType = arraySignature.as<Wasm::ArrayType>()->elementType().type;
+    const Wasm::WasmGCType& arraySignature = structure->typeDefinition();
+    Wasm::StorageType elementType = arraySignature.as<Wasm::WasmGCArrayType>()->elementType().type;
 
     JSValue result;
     if (elementType.unpacked().isV128())
@@ -708,8 +708,8 @@ WASM_IPINT_EXTERN_CPP_DECL(array_new_default, uint32_t type, uint32_t size)
     WasmSlowPathWithoutCallFrameTracer tracer(instance->vm());
     UNUSED_PARAM(instance);
     WebAssemblyGCStructure* structure = instance->gcObjectStructure(type);
-    const Wasm::TypeDefinition& arraySignature = structure->typeDefinition();
-    Wasm::StorageType elementType = arraySignature.as<Wasm::ArrayType>()->elementType().type;
+    const Wasm::WasmGCType& arraySignature = structure->typeDefinition();
+    Wasm::StorageType elementType = arraySignature.as<Wasm::WasmGCArrayType>()->elementType().type;
     EncodedJSValue defaultValue = 0;
 
     if (Wasm::isRefType(elementType)) {
@@ -989,7 +989,7 @@ WASM_IPINT_EXTERN_CPP_DECL(ref_test, int32_t heapType, bool allowNull, EncodedJS
     }
 
     auto& info = instance->module().moduleInformation();
-    bool result = Wasm::refCast(value, allowNull, info.typeSignatures[heapType]->index(), info.rtts[heapType].ptr());
+    bool result = Wasm::refCast(value, allowNull, info.gcTypeSignatures[heapType]->index(), info.gcTypeSignatures[heapType]->m_rtt.get());
     IPINT_RETURN(static_cast<uint64_t>(result));
 }
 
@@ -1002,7 +1002,7 @@ WASM_IPINT_EXTERN_CPP_DECL(ref_cast, int32_t heapType, bool allowNull, EncodedJS
     }
 
     auto& info = instance->module().moduleInformation();
-    if (!Wasm::refCast(value, allowNull, info.typeSignatures[heapType]->index(), info.rtts[heapType].ptr())) [[unlikely]] {
+    if (!Wasm::refCast(value, allowNull, info.gcTypeSignatures[heapType]->index(), info.gcTypeSignatures[heapType]->m_rtt.get())) [[unlikely]] {
         if (!allowNull && JSValue::decode(value).isNull())
             IPINT_THROW(Wasm::ExceptionType::NullAccess);
         IPINT_THROW(Wasm::ExceptionType::CastFailure);

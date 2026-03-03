@@ -33,6 +33,8 @@
 #include "JSWebAssemblyArray.h"
 #include "JSWebAssemblyStruct.h"
 #include "WasmCallee.h"
+#include "WasmGCType.h"
+#include "WasmGCTypeRegistry.h"
 #include <wtf/CheckedArithmetic.h>
 #include <wtf/FastMalloc.h>
 #include <wtf/text/MakeString.h>
@@ -88,7 +90,7 @@ void validateWasmValue(uint64_t wasmValue, Type expectedType)
             ASSERT(jsDynamicCast<JSWebAssemblyArray*>(value));
 
         if (isRefWithTypeIndex(expectedType)) {
-            auto expectedRTT = Wasm::TypeInformation::getCanonicalRTT(expectedType.index);
+            auto expectedRTT = Wasm::WasmGCTypeRegistry::singleton().getCanonicalRTT(WasmGCType::fromIndex(expectedType.index));
             if (expectedRTT->kind() == RTTKind::Function) {
                 ASSERT(jsDynamicCast<JSFunction*>(value));
                 return;

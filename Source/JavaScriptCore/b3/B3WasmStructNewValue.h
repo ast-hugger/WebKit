@@ -28,6 +28,7 @@
 #if ENABLE(B3_JIT)
 
 #include "B3Value.h"
+#include "WasmGCType.h"
 #include "WasmTypeDefinition.h"
 #include <wtf/StdLibExtras.h>
 
@@ -47,7 +48,7 @@ public:
     Value* structureID() const { return child(1); }
 
     Ref<const Wasm::RTT> rtt() const { return m_rtt; }
-    const Wasm::StructType* structType() const { return m_structType; }
+    const Wasm::WasmGCStructType* structType() const { return m_structType; }
     uint32_t typeIndex() const { return m_typeIndex; }
 
     // Offset from instance for allocator lookup (pre-computed from ModuleInformation)
@@ -65,7 +66,7 @@ private:
     template<typename... Arguments>
     static Opcode opcodeFromConstructor(Arguments...) { return WasmStructNew; }
 
-    WasmStructNewValue(Origin origin, Type resultType, Ref<const Wasm::RTT> rtt, const Wasm::StructType* structType, uint32_t typeIndex, int32_t allocatorsBaseOffset, Value* instance, Value* structureID)
+    WasmStructNewValue(Origin origin, Type resultType, Ref<const Wasm::RTT> rtt, const Wasm::WasmGCStructType* structType, uint32_t typeIndex, int32_t allocatorsBaseOffset, Value* instance, Value* structureID)
         : Value(CheckedOpcode, WasmStructNew, resultType, Two, origin, instance, structureID)
         , m_rtt(WTF::move(rtt))
         , m_structType(structType)
@@ -74,8 +75,8 @@ private:
     {
     }
 
-    const Ref<const Wasm::RTT> m_rtt;
-    SUPPRESS_UNCOUNTED_MEMBER const Wasm::StructType* m_structType;
+    Ref<const Wasm::RTT> m_rtt;
+    SUPPRESS_UNCOUNTED_MEMBER const Wasm::WasmGCStructType* m_structType;
     uint32_t m_typeIndex;
     int32_t m_allocatorsBaseOffset;
 };

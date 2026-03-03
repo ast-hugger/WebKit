@@ -33,65 +33,44 @@
 
 namespace JSC {
 
-static inline Wasm::TypeHash typeHash(const Wasm::TypeDefinition& typeDef)
+// Register the type in its own root set so it (and transitively everything
+// it references) stays alive in the registry even after the originating
+// module is garbage-collected. The registry's collector traces type
+// references from root set members, so a single entry is sufficient.
+void WebAssemblyGCStructure::registerType()
 {
-    return Wasm::TypeHash { const_cast<Wasm::TypeDefinition&>(typeDef) };
+    m_typeDependencies.append(const_cast<Wasm::WasmGCType*>(m_type));
+    Wasm::WasmGCTypeRegistry& registry = Wasm::WasmGCTypeRegistry::singleton();
+    Locker locker { registry.lock() };
+    registry.registerRootSet(&m_typeDependencies);
 }
 
-WebAssemblyGCStructureTypeDependencies::WebAssemblyGCStructureTypeDependencies(Ref<const Wasm::TypeDefinition>&& unexpandedType)
-{
-    WorkList work;
-    SUPPRESS_UNCHECKED_ARG work.append(unexpandedType->expand());
-    while (!work.isEmpty())
-        SUPPRESS_UNCHECKED_ARG process(work.takeLast(), work);
-    m_typeDefinitions.add(typeHash(unexpandedType));
-}
-
-void WebAssemblyGCStructureTypeDependencies::process(const Wasm::TypeDefinition& typeDef, WorkList& work)
-{
-    if (m_typeDefinitions.contains(typeHash(typeDef)))
-        return;
-    m_typeDefinitions.add(typeHash(typeDef));
-    if (typeDef.is<Wasm::StructType>()) {
-        SUPPRESS_UNCHECKED_LOCAL auto* structType = typeDef.as<Wasm::StructType>();
-        for (unsigned i = 0; i < structType->fieldCount(); ++i)
-            process(structType->field(i), work);
-    } else if (typeDef.is<Wasm::ArrayType>())
-        process(typeDef.as<Wasm::ArrayType>()->elementType(), work);
-}
-
-void WebAssemblyGCStructureTypeDependencies::process(Wasm::FieldType fieldType, WorkList& work)
-{
-    if (fieldType.type.is<Wasm::Type>()) {
-        Wasm::Type type = fieldType.type.as<Wasm::Type>();
-        if (isRefWithTypeIndex(type)) {
-            SUPPRESS_UNCHECKED_LOCAL const auto& typeDef = Wasm::TypeInformation::get(type.index);
-            work.append(typeDef);
-        }
-    }
-}
-
-WebAssemblyGCStructure::WebAssemblyGCStructure(VM& vm, JSGlobalObject* globalObject, const TypeInfo& typeInfo, const ClassInfo* classInfo, Ref<const Wasm::TypeDefinition>&& unexpandedType, Ref<const Wasm::TypeDefinition>&& type, Ref<const Wasm::RTT>&& rtt)
+WebAssemblyGCStructure::WebAssemblyGCStructure(VM& vm, JSGlobalObject* globalObject, const TypeInfo& typeInfo, const ClassInfo* classInfo, const Wasm::WasmGCType* type, Ref<const Wasm::RTT>&& rtt)
     : Structure(vm, StructureVariant::WebAssemblyGC, globalObject, typeInfo, classInfo)
     , m_rtt(WTF::move(rtt))
-    , m_type(WTF::move(type))
-    , m_typeDependencies(WebAssemblyGCStructureTypeDependencies { WTF::move(unexpandedType) })
+    , m_type(type)
 {
+    registerType();
 }
 
 WebAssemblyGCStructure::WebAssemblyGCStructure(VM& vm, WebAssemblyGCStructure* previous)
     : Structure(vm, StructureVariant::WebAssemblyGC, previous)
     , m_rtt(previous->m_rtt)
     , m_type(previous->m_type)
-    , m_typeDependencies(previous->m_typeDependencies)
 {
+    registerType();
+}
+
+WebAssemblyGCStructure::~WebAssemblyGCStructure()
+{
+    Wasm::WasmGCTypeRegistry::singleton().deregisterRootSet(&m_typeDependencies);
 }
 
 
-WebAssemblyGCStructure* WebAssemblyGCStructure::create(VM& vm, JSGlobalObject* globalObject, const TypeInfo& typeInfo, const ClassInfo* classInfo, Ref<const Wasm::TypeDefinition>&& unexpandedType, Ref<const Wasm::TypeDefinition>&& type, Ref<const Wasm::RTT>&& rtt)
+WebAssemblyGCStructure* WebAssemblyGCStructure::create(VM& vm, JSGlobalObject* globalObject, const TypeInfo& typeInfo, const ClassInfo* classInfo, const Wasm::WasmGCType* type, Ref<const Wasm::RTT>&& rtt)
 {
     ASSERT(vm.structureStructure);
-    WebAssemblyGCStructure* newStructure = new (NotNull, allocateCell<WebAssemblyGCStructure>(vm)) WebAssemblyGCStructure(vm, globalObject, typeInfo, classInfo, WTF::move(unexpandedType), WTF::move(type), WTF::move(rtt));
+    WebAssemblyGCStructure* newStructure = new (NotNull, allocateCell<WebAssemblyGCStructure>(vm)) WebAssemblyGCStructure(vm, globalObject, typeInfo, classInfo, type, WTF::move(rtt));
     newStructure->finishCreation(vm);
     ASSERT(newStructure->type() == StructureType);
     return newStructure;

@@ -33,6 +33,7 @@
 #include "JSCellInlines.h"
 #include "JSWebAssemblyInstance.h"
 #include "SlotVisitorInlines.h"
+#include "WasmGCType.h"
 #include "WasmTypeDefinitionInlines.h"
 
 namespace JSC {
@@ -62,9 +63,9 @@ void WebAssemblyFunctionBase::finishCreation(VM& vm, NativeExecutable* executabl
     ASSERT(inherits(info()));
 }
 
-const Wasm::FunctionSignature& WebAssemblyFunctionBase::signature() const
+const Wasm::WasmGCFunctionType& WebAssemblyFunctionBase::signature() const
 {
-    return Wasm::TypeInformation::getFunctionSignature(typeIndex());
+    return *Wasm::WasmGCType::fromIndex(typeIndex())->as<Wasm::WasmGCFunctionType>();
 }
 
 } // namespace JSC

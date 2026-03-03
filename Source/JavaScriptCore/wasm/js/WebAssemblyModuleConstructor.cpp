@@ -40,6 +40,7 @@
 #include "JSWebAssemblyHelpers.h"
 #include "JSWebAssemblyModule.h"
 #include "ObjectConstructor.h"
+#include "WasmGCType.h"
 #include "WasmModule.h"
 #include "WasmModuleInformation.h"
 #include "WebAssemblyBuiltin.h"
@@ -121,7 +122,7 @@ static JSObject* createTypeReflectionObject(JSGlobalObject* globalObject, JSWebA
         typeObj = constructEmptyObject(globalObject, globalObject->objectPrototype(), 2);
 
         Wasm::TypeIndex typeIndex = module->moduleInformation().typeIndexFromFunctionIndexSpace(Wasm::FunctionSpaceIndex(impOrExp.kindIndex));
-        SUPPRESS_UNCOUNTED_LOCAL const auto& signature = Wasm::TypeInformation::getFunctionSignature(typeIndex);
+        SUPPRESS_UNCOUNTED_LOCAL const auto& signature = *Wasm::WasmGCType::fromIndex(typeIndex)->as<Wasm::WasmGCFunctionType>();
 
         JSArray* functionParametersTypes = constructEmptyArray(globalObject, nullptr);
         RETURN_IF_EXCEPTION(throwScope, { });

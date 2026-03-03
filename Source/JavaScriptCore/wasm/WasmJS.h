@@ -46,11 +46,11 @@ namespace Wasm {
 struct CompilationContext;
 struct InternalFunction;
 struct ModuleInformation;
-class TypeDefinition;
+class WasmGCType;
 struct UnlinkedWasmToWasmCall;
 
 // Create wrapper code to call from JS -> WebAssembly.
-using CreateJSWrapper = WTF::Function<std::unique_ptr<InternalFunction>(CCallHelpers&, const TypeDefinition&, Vector<UnlinkedWasmToWasmCall>*, const ModuleInformation&, MemoryMode, uint32_t)>;
+using CreateJSWrapper = WTF::Function<std::unique_ptr<InternalFunction>(CCallHelpers&, const WasmGCType&, Vector<UnlinkedWasmToWasmCall>*, const ModuleInformation&, MemoryMode, uint32_t)>;
 
 // Called as soon as an exception is detected. The return value is the PC to continue at.
 using ThrowWasmException = void* (*)(CallFrame*, Wasm::ExceptionType, JSWebAssemblyInstance*);

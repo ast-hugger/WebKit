@@ -30,6 +30,7 @@
 #include "B3Effects.h"
 #include "B3HeapRange.h"
 #include "B3Value.h"
+#include "WasmGCType.h"
 #include "WasmTypeDefinition.h"
 
 WTF_ALLOW_UNSAFE_BUFFER_USAGE_BEGIN
@@ -43,7 +44,7 @@ public:
     ~WasmStructFieldValue() override;
 
     Ref<const Wasm::RTT> rtt() const { return m_rtt; }
-    const Wasm::StructType* structType() const { return m_structType; }
+    const Wasm::WasmGCStructType* structType() const { return m_structType; }
     Wasm::StructFieldCount fieldIndex() const { return m_fieldIndex; }
     uint64_t fieldHeapKey() const { return m_fieldHeapKey; }
 
@@ -53,7 +54,7 @@ public:
 
 protected:
     template<typename... Arguments>
-    WasmStructFieldValue(CheckedOpcodeTag tag, Kind kind, Type type, NumChildren numChildren, Origin origin, Ref<const Wasm::RTT> rtt, const Wasm::StructType* structType, Wasm::StructFieldCount fieldIndex, uint64_t fieldHeapKey, Mutability mutability, Arguments... arguments)
+    WasmStructFieldValue(CheckedOpcodeTag tag, Kind kind, Type type, NumChildren numChildren, Origin origin, Ref<const Wasm::RTT> rtt, const Wasm::WasmGCStructType* structType, Wasm::StructFieldCount fieldIndex, uint64_t fieldHeapKey, Mutability mutability, Arguments... arguments)
         : Value(tag, kind, type, numChildren, origin, arguments...)
         , m_rtt(WTF::move(rtt))
         , m_structType(structType)
@@ -63,8 +64,8 @@ protected:
     {
     }
 
-    const Ref<const Wasm::RTT> m_rtt;
-    SUPPRESS_UNCOUNTED_MEMBER const Wasm::StructType* m_structType;
+    Ref<const Wasm::RTT> m_rtt;
+    SUPPRESS_UNCOUNTED_MEMBER const Wasm::WasmGCStructType* m_structType;
     Wasm::StructFieldCount m_fieldIndex;
     uint64_t m_fieldHeapKey;
     HeapRange m_range { HeapRange::top() };

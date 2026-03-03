@@ -38,6 +38,7 @@
 #include "WasmContext.h"
 #include "WasmFunctionIPIntMetadataGenerator.h"
 #include "WasmFunctionParser.h"
+#include "WasmGCType.h"
 #include "WasmModuleDebugInfo.h"
 #include <wtf/Assertions.h>
 #include <wtf/CompletionHandler.h>
@@ -197,7 +198,7 @@ private:
     struct TryTableTarget {
         CatchKind type;
         uint32_t tag;
-        const TypeDefinition* exceptionSignature;
+        const WasmGCType* exceptionSignature;
         ControlRef target;
     };
     Vector<TryTableTarget> m_tryTableTargets;
@@ -205,7 +206,7 @@ private:
 
 class IPIntGenerator {
 public:
-    IPIntGenerator(ModuleInformation&, FunctionCodeIndex, const TypeDefinition&, std::span<const uint8_t>, FunctionDebugInfo* = nullptr);
+    IPIntGenerator(ModuleInformation&, FunctionCodeIndex, const WasmGCType&, std::span<const uint8_t>, FunctionDebugInfo* = nullptr);
 
     static constexpr bool shouldFuseBranchCompare = false;
 
@@ -238,7 +239,7 @@ public:
 
     std::unique_ptr<FunctionIPIntMetadataGenerator> finalize();
 
-    [[nodiscard]] PartialResult addArguments(const TypeDefinition&);
+    [[nodiscard]] PartialResult addArguments(const WasmGCType&);
     [[nodiscard]] PartialResult addLocal(Type, uint32_t);
     Value addConstant(Type, uint64_t);
 
@@ -347,8 +348,8 @@ public:
     [[nodiscard]] PartialResult addArrayInitData(uint32_t, ExpressionType, ExpressionType, uint32_t, ExpressionType, ExpressionType);
     [[nodiscard]] PartialResult addStructNew(uint32_t, ArgumentList&, ExpressionType&);
     [[nodiscard]] PartialResult addStructNewDefault(uint32_t, ExpressionType&);
-    [[nodiscard]] PartialResult addStructGet(ExtGCOpType, ExpressionType, const StructType&, const RTT&, uint32_t, ExpressionType&);
-    [[nodiscard]] PartialResult addStructSet(ExpressionType, const StructType&, const RTT&, uint32_t, ExpressionType);
+    [[nodiscard]] PartialResult addStructGet(ExtGCOpType, ExpressionType, const WasmGCStructType&, const RTT&, uint32_t, ExpressionType&);
+    [[nodiscard]] PartialResult addStructSet(ExpressionType, const WasmGCStructType&, const RTT&, uint32_t, ExpressionType);
     [[nodiscard]] PartialResult addRefTest(ExpressionType, bool, int32_t, bool, ExpressionType&);
     [[nodiscard]] PartialResult addRefCast(ExpressionType, bool, int32_t, ExpressionType&);
     [[nodiscard]] PartialResult addAnyConvertExtern(ExpressionType, ExpressionType&);
@@ -497,8 +498,8 @@ public:
 
     [[nodiscard]] PartialResult addTry(BlockSignature&&, Stack&, ControlType&, Stack&);
     [[nodiscard]] PartialResult addTryTable(BlockSignature&&, Stack& enclosingStack, const Vector<CatchHandler>& targets, ControlType& result, Stack& newStack);
-    [[nodiscard]] PartialResult addCatch(unsigned, const TypeDefinition&, Stack&, ControlType&, ResultList&);
-    [[nodiscard]] PartialResult addCatchToUnreachable(unsigned, const TypeDefinition&, ControlType&, ResultList&);
+    [[nodiscard]] PartialResult addCatch(unsigned, const WasmGCType&, Stack&, ControlType&, ResultList&);
+    [[nodiscard]] PartialResult addCatchToUnreachable(unsigned, const WasmGCType&, ControlType&, ResultList&);
     [[nodiscard]] PartialResult addCatchAll(Stack&, ControlType&);
     [[nodiscard]] PartialResult addCatchAllToUnreachable(ControlType&);
     [[nodiscard]] PartialResult addDelegate(ControlType&, ControlType&);
@@ -526,9 +527,9 @@ public:
 
     // Calls
 
-    [[nodiscard]] PartialResult addCall(unsigned, FunctionSpaceIndex, const TypeDefinition&, ArgumentList&, ResultList&, CallType = CallType::Call);
-    [[nodiscard]] PartialResult addCallIndirect(unsigned, unsigned, const TypeDefinition&, ArgumentList&, ResultList&, CallType = CallType::Call);
-    [[nodiscard]] PartialResult addCallRef(unsigned, const TypeDefinition&, ArgumentList&, ResultList&, CallType = CallType::Call);
+    [[nodiscard]] PartialResult addCall(unsigned, FunctionSpaceIndex, const WasmGCType&, ArgumentList&, ResultList&, CallType = CallType::Call);
+    [[nodiscard]] PartialResult addCallIndirect(unsigned, unsigned, const WasmGCType&, ArgumentList&, ResultList&, CallType = CallType::Call);
+    [[nodiscard]] PartialResult addCallRef(unsigned, const WasmGCType&, ArgumentList&, ResultList&, CallType = CallType::Call);
     [[nodiscard]] PartialResult addUnreachable();
     [[nodiscard]] PartialResult addCrash();
 
@@ -537,8 +538,8 @@ public:
     {
         return m_parser->offset() - m_parser->currentOpcodeStartingOffset();
     }
-    void addCallCommonData(const FunctionSignature&, const CallInformation&);
-    void addTailCallCommonData(const FunctionSignature&, const CallInformation&);
+    void addCallCommonData(const WasmGCFunctionType&, const CallInformation&);
+    void addTailCallCommonData(const WasmGCFunctionType&, const CallInformation&);
     void didFinishParsingLocals()
     {
         m_metadata->m_bytecodeOffset = m_parser->offset();
@@ -607,7 +608,7 @@ public:
         }
     }
 
-    ALWAYS_INLINE const CallInformation& cachedCallInformationFor(const FunctionSignature& signature)
+    ALWAYS_INLINE const CallInformation& cachedCallInformationFor(const WasmGCFunctionType& signature)
     {
         if (m_cachedSignature != &signature) {
             m_cachedSignature = &signature;
@@ -664,7 +665,7 @@ private:
     inline uint32_t curMC() { return m_metadata->m_metadata.size(); }
 
     CallInformation m_cachedCallInformation { };
-    const FunctionSignature* m_cachedSignature { nullptr };
+    const WasmGCFunctionType* m_cachedSignature { nullptr };
     Vector<uint8_t, 16> m_cachedCallBytecode;
 
     Checked<int32_t> m_argumentAndResultsStackSize;
@@ -679,7 +680,7 @@ private:
 // use if (true) to avoid warnings.
 #define IPINT_UNIMPLEMENTED { if (true) { CRASH(); } return { }; }
 
-IPIntGenerator::IPIntGenerator(ModuleInformation& info, FunctionCodeIndex functionIndex, const TypeDefinition&, std::span<const uint8_t> bytecode, FunctionDebugInfo* debugInfo)
+IPIntGenerator::IPIntGenerator(ModuleInformation& info, FunctionCodeIndex functionIndex, const WasmGCType&, std::span<const uint8_t> bytecode, FunctionDebugInfo* debugInfo)
     : m_info(info)
     , m_functionIndex(functionIndex)
     , m_metadata(WTF::makeUnique<FunctionIPIntMetadataGenerator>(functionIndex, bytecode))
@@ -923,9 +924,9 @@ IPIntGenerator::ExpressionType IPIntGenerator::addConstant(v128_t)
 
 // Locals and Globals
 
-[[nodiscard]] PartialResult IPIntGenerator::addArguments(const TypeDefinition &signature)
+[[nodiscard]] PartialResult IPIntGenerator::addArguments(const WasmGCType &signature)
 {
-    auto sig = signature.as<FunctionSignature>();
+    auto sig = signature.as<WasmGCFunctionType>();
     const CallInformation callCC = wasmCallingConvention().callInformationFor(*sig, CallRole::Callee);
 
     ASSERT(callCC.headerAndArgumentStackSizeInBytes >= callCC.headerIncludingThisSizeInBytes);
@@ -1314,7 +1315,7 @@ IPIntGenerator::ExpressionType IPIntGenerator::addConstant(v128_t)
 
 [[nodiscard]] PartialResult IPIntGenerator::addStructNew(uint32_t index, ArgumentList&, ExpressionType&)
 {
-    const StructType& type = *m_info.typeSignatures[index]->expand().as<StructType>();
+    const WasmGCStructType& type = *m_info.gcTypeSignatures[index]->as<WasmGCStructType>();
     m_metadata->appendMetadata<IPInt::StructNewMetadata>({
         index,
         static_cast<uint16_t>(type.fieldCount()),
@@ -1334,7 +1335,7 @@ IPIntGenerator::ExpressionType IPIntGenerator::addConstant(v128_t)
     return { };
 }
 
-[[nodiscard]] PartialResult IPIntGenerator::addStructGet(ExtGCOpType, ExpressionType, const StructType&, const RTT&, uint32_t fieldIndex, ExpressionType&)
+[[nodiscard]] PartialResult IPIntGenerator::addStructGet(ExtGCOpType, ExpressionType, const WasmGCStructType&, const RTT&, uint32_t fieldIndex, ExpressionType&)
 {
     m_metadata->appendMetadata<IPInt::StructGetSetMetadata>({
         fieldIndex,
@@ -1343,7 +1344,7 @@ IPIntGenerator::ExpressionType IPIntGenerator::addConstant(v128_t)
     return { };
 }
 
-[[nodiscard]] PartialResult IPIntGenerator::addStructSet(ExpressionType, const StructType&, const RTT&, uint32_t fieldIndex, ExpressionType)
+[[nodiscard]] PartialResult IPIntGenerator::addStructSet(ExpressionType, const WasmGCStructType&, const RTT&, uint32_t fieldIndex, ExpressionType)
 {
     m_metadata->appendMetadata<IPInt::StructGetSetMetadata>({
         fieldIndex,
@@ -2442,18 +2443,18 @@ void IPIntGenerator::convertTryToCatch(ControlType& tryBlock, CatchKind catchKin
     tryBlock = WTF::move(catchBlock);
 }
 
-[[nodiscard]] PartialResult IPIntGenerator::addCatch(unsigned exceptionIndex, const TypeDefinition& exceptionSignature, Stack&, ControlType& block, ResultList& results)
+[[nodiscard]] PartialResult IPIntGenerator::addCatch(unsigned exceptionIndex, const WasmGCType& exceptionSignature, Stack&, ControlType& block, ResultList& results)
 {
 
     return addCatchToUnreachable(exceptionIndex, exceptionSignature, block, results);
 }
 
-[[nodiscard]] PartialResult IPIntGenerator::addCatchToUnreachable(unsigned exceptionIndex, const TypeDefinition& exceptionSignature, ControlType& block, ResultList& results)
+[[nodiscard]] PartialResult IPIntGenerator::addCatchToUnreachable(unsigned exceptionIndex, const WasmGCType& exceptionSignature, ControlType& block, ResultList& results)
 {
     if (ControlType::isTry(block))
         convertTryToCatch(block, CatchKind::Catch);
 
-    const FunctionSignature& signature = *exceptionSignature.as<FunctionSignature>();
+    const WasmGCFunctionType& signature = *exceptionSignature.as<WasmGCFunctionType>();
     for (unsigned i = 0; i < signature.argumentCount(); i++)
         results.append(Value { });
 
@@ -2952,7 +2953,7 @@ static intptr_t addCallResultBytecode(Vector<uint8_t, 16>& results, const CallIn
     return firstStackResultSPOffset;
 }
 
-void IPIntGenerator::addCallCommonData(const FunctionSignature&, const CallInformation& callConvention)
+void IPIntGenerator::addCallCommonData(const WasmGCFunctionType&, const CallInformation& callConvention)
 {
     // cachedCallInformationFor() invalidates this cache on a miss, so if the cache is populated,
     // it was a cache hit and we can use the previously generated payload.
@@ -2990,7 +2991,7 @@ void IPIntGenerator::addCallCommonData(const FunctionSignature&, const CallInfor
     memcpy(m_metadata->m_metadata.mutableSpan().data() + size, m_cachedCallBytecode.mutableSpan().data(), m_cachedCallBytecode.size());
 }
 
-void IPIntGenerator::addTailCallCommonData(const FunctionSignature&, const CallInformation& callConvention)
+void IPIntGenerator::addTailCallCommonData(const WasmGCFunctionType&, const CallInformation& callConvention)
 {
     Vector<uint8_t, 16> mINTBytecode;
     addCallArgumentBytecode<true>(mINTBytecode, callConvention);
@@ -3009,9 +3010,9 @@ void IPIntGenerator::addTailCallCommonData(const FunctionSignature&, const CallI
     m_metadata->appendMetadata(stackArgumentsAndResultsInBytes);
 }
 
-[[nodiscard]] PartialResult IPIntGenerator::addCall(unsigned callProfileIndex, FunctionSpaceIndex index, const TypeDefinition& type, ArgumentList&, ResultList& results, CallType callType)
+[[nodiscard]] PartialResult IPIntGenerator::addCall(unsigned callProfileIndex, FunctionSpaceIndex index, const WasmGCType& type, ArgumentList&, ResultList& results, CallType callType)
 {
-    const FunctionSignature& signature = *type.as<FunctionSignature>();
+    const WasmGCFunctionType& signature = *type.as<WasmGCFunctionType>();
     const CallInformation& callConvention = cachedCallInformationFor(signature);
     m_metadata->addCallTarget(callProfileIndex, index);
 
@@ -3055,9 +3056,9 @@ void IPIntGenerator::addTailCallCommonData(const FunctionSignature&, const CallI
     return { };
 }
 
-[[nodiscard]] PartialResult IPIntGenerator::addCallIndirect(unsigned callProfileIndex, unsigned tableIndex, const TypeDefinition& originalSignature, ArgumentList&, ResultList& results, CallType callType)
+[[nodiscard]] PartialResult IPIntGenerator::addCallIndirect(unsigned callProfileIndex, unsigned tableIndex, const WasmGCType& originalSignature, ArgumentList&, ResultList& results, CallType callType)
 {
-    const FunctionSignature& signature = *originalSignature.expand().as<FunctionSignature>();
+    const WasmGCFunctionType& signature = *originalSignature.as<WasmGCFunctionType>();
     const CallInformation& callConvention = cachedCallInformationFor(signature);
     m_metadata->addCallTarget(callProfileIndex, { });
 
@@ -3106,9 +3107,9 @@ void IPIntGenerator::addTailCallCommonData(const FunctionSignature&, const CallI
     return { };
 }
 
-[[nodiscard]] PartialResult IPIntGenerator::addCallRef(unsigned callProfileIndex, const TypeDefinition& originalSignature, ArgumentList&, ResultList& results, CallType callType)
+[[nodiscard]] PartialResult IPIntGenerator::addCallRef(unsigned callProfileIndex, const WasmGCType& originalSignature, ArgumentList&, ResultList& results, CallType callType)
 {
-    const FunctionSignature& signature = *originalSignature.expand().as<FunctionSignature>();
+    const WasmGCFunctionType& signature = *originalSignature.as<WasmGCFunctionType>();
     const CallInformation& callConvention = cachedCallInformationFor(signature);
     m_metadata->addCallTarget(callProfileIndex, { });
 
@@ -3185,7 +3186,7 @@ std::unique_ptr<FunctionIPIntMetadataGenerator> IPIntGenerator::finalize()
     return WTF::move(m_metadata);
 }
 
-Expected<std::unique_ptr<FunctionIPIntMetadataGenerator>, String> parseAndCompileMetadata(std::span<const uint8_t> function, const TypeDefinition& signature, ModuleInformation& info, FunctionCodeIndex functionIndex)
+Expected<std::unique_ptr<FunctionIPIntMetadataGenerator>, String> parseAndCompileMetadata(std::span<const uint8_t> function, const WasmGCType& signature, ModuleInformation& info, FunctionCodeIndex functionIndex)
 {
     IPIntGenerator generator(info, functionIndex, signature, function);
     FunctionParser<IPIntGenerator> parser(generator, function, signature, info);
@@ -3193,7 +3194,7 @@ Expected<std::unique_ptr<FunctionIPIntMetadataGenerator>, String> parseAndCompil
     return generator.finalize();
 }
 
-void parseForDebugInfo(std::span<const uint8_t> function, const TypeDefinition& signature, ModuleInformation& info, FunctionCodeIndex functionIndex, FunctionDebugInfo& debugInfo)
+void parseForDebugInfo(std::span<const uint8_t> function, const WasmGCType& signature, ModuleInformation& info, FunctionCodeIndex functionIndex, FunctionDebugInfo& debugInfo)
 {
     IPIntGenerator generator(info, functionIndex, signature, function, &debugInfo);
     FunctionParser<IPIntGenerator> parser(generator, function, signature, info);

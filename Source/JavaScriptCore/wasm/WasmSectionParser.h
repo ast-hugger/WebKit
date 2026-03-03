@@ -73,13 +73,8 @@ private:
     [[nodiscard]] PartialResult parseInitExpr(uint8_t&, bool&, uint64_t&, v128_t&, Type, Type& initExprType);
     [[nodiscard]] PartialResult parseI32InitExpr(std::optional<I32InitExpr>&, ASCIILiteral failMessage);
 
-    [[nodiscard]] PartialResult parseFunctionType(uint32_t position, RefPtr<TypeDefinition>&);
     [[nodiscard]] PartialResult parsePackedType(PackedType&);
     [[nodiscard]] PartialResult parseStorageType(StorageType&);
-    [[nodiscard]] PartialResult parseStructType(uint32_t position, RefPtr<TypeDefinition>&);
-    [[nodiscard]] PartialResult parseArrayType(uint32_t position, RefPtr<TypeDefinition>&);
-    [[nodiscard]] PartialResult parseRecursionGroup(uint32_t position, RefPtr<TypeDefinition>&);
-    [[nodiscard]] PartialResult parseSubtype(uint32_t position, RefPtr<TypeDefinition>&, Vector<TypeIndex>&, bool);
 
     [[nodiscard]] PartialResult parseGCFunctionType(uint32_t position, WasmGCType*& result);
     [[nodiscard]] PartialResult parseGCStructType(uint32_t position, WasmGCType*& result);
@@ -98,9 +93,6 @@ private:
     [[nodiscard]] PartialResult parseElementSegmentVectorOfIndexes(Vector<Element::InitializationType>&, Vector<uint64_t>&, const unsigned, const unsigned);
 
     [[nodiscard]] PartialResult parseI32InitExprForDataSection(std::optional<I32InitExpr>&);
-
-    static bool checkStructuralSubtype(const TypeDefinition&, const TypeDefinition&);
-    [[nodiscard]] PartialResult checkSubtypeValidity(const TypeDefinition&);
 
     size_t m_offsetInSource;
     const Ref<ModuleInformation> m_info;

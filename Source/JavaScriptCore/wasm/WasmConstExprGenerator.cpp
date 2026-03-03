@@ -34,6 +34,7 @@
 #include "JSWebAssemblyInstance.h"
 #include "JSWebAssemblyStruct.h"
 #include "WasmFunctionParser.h"
+#include "WasmGCType.h"
 #include "WasmModuleInformation.h"
 #include "WasmOperationsInlines.h"
 #include "WasmParser.h"
@@ -215,7 +216,7 @@ public:
     const Vector<FunctionSpaceIndex>& declaredFunctions() const { return m_declaredFunctions; }
     void setParser(FunctionParser<ConstExprGenerator>* parser) { m_parser = parser; };
 
-    bool addArguments(const TypeDefinition&) { RELEASE_ASSERT_NOT_REACHED(); }
+    bool addArguments(const WasmGCType&) { RELEASE_ASSERT_NOT_REACHED(); }
 
     ExpressionType addConstant(Type type, uint64_t value)
     {
@@ -335,8 +336,8 @@ public:
     {
         if (m_mode == Mode::Evaluate) {
             auto* structure = m_instance->gcObjectStructure(typeIndex);
-            const Wasm::TypeDefinition& arraySignature = structure->typeDefinition();
-            auto elementType = arraySignature.as<Wasm::ArrayType>()->elementType().type.unpacked();
+            const Wasm::WasmGCType& arraySignature = structure->typeDefinition();
+            auto elementType = arraySignature.as<Wasm::WasmGCArrayType>()->elementType().type.unpacked();
             ExpressionType initValue { };
             if (isRefType(elementType))
                 initValue = { static_cast<uint64_t>(JSValue::encode(jsNull())) };
@@ -353,8 +354,8 @@ public:
     {
         if (m_mode == Mode::Evaluate) {
             auto* structure = m_instance->gcObjectStructure(typeIndex);
-            const Wasm::TypeDefinition& arraySignature = structure->typeDefinition();
-            if (arraySignature.as<Wasm::ArrayType>()->elementType().type.unpacked().isV128()) {
+            const Wasm::WasmGCType& arraySignature = structure->typeDefinition();
+            if (arraySignature.as<Wasm::WasmGCArrayType>()->elementType().type.unpacked().isV128()) {
                 result = createNewArray(structure, args.size(), { vectorAllZeros() });
                 WASM_ALLOCATOR_FAIL_IF(result.isInvalid(), "Failed to allocate new array"_s);
                 JSWebAssemblyArray* arrayObject = jsCast<JSWebAssemblyArray*>(JSValue::decode(result.getValue()));
@@ -419,8 +420,8 @@ public:
         return { };
     }
 
-    [[nodiscard]] PartialResult addStructGet(ExtGCOpType, ExpressionType, const StructType&, const RTT&, uint32_t, ExpressionType&) CONST_EXPR_STUB
-    [[nodiscard]] PartialResult addStructSet(ExpressionType, const StructType&, const RTT&, uint32_t, ExpressionType) CONST_EXPR_STUB
+    [[nodiscard]] PartialResult addStructGet(ExtGCOpType, ExpressionType, const WasmGCStructType&, const RTT&, uint32_t, ExpressionType&) CONST_EXPR_STUB
+    [[nodiscard]] PartialResult addStructSet(ExpressionType, const WasmGCStructType&, const RTT&, uint32_t, ExpressionType) CONST_EXPR_STUB
     [[nodiscard]] PartialResult addRefTest(ExpressionType, bool, int32_t, bool, ExpressionType&) CONST_EXPR_STUB
     [[nodiscard]] PartialResult addRefCast(ExpressionType, bool, int32_t, ExpressionType&) CONST_EXPR_STUB
 
@@ -641,8 +642,8 @@ public:
     [[nodiscard]] PartialResult addElseToUnreachable(ControlData&) CONST_EXPR_STUB
     [[nodiscard]] PartialResult addTry(BlockSignature, Stack&, ControlType&, Stack&) CONST_EXPR_STUB
     [[nodiscard]] PartialResult addTryTable(BlockSignature, Stack&, const Vector<CatchHandler>&, ControlType&, Stack&) CONST_EXPR_STUB
-    [[nodiscard]] PartialResult addCatch(unsigned, const TypeDefinition&, Stack&, ControlType&, ResultList&) CONST_EXPR_STUB
-    [[nodiscard]] PartialResult addCatchToUnreachable(unsigned, const TypeDefinition&, ControlType&, ResultList&) CONST_EXPR_STUB
+    [[nodiscard]] PartialResult addCatch(unsigned, const WasmGCType&, Stack&, ControlType&, ResultList&) CONST_EXPR_STUB
+    [[nodiscard]] PartialResult addCatchToUnreachable(unsigned, const WasmGCType&, ControlType&, ResultList&) CONST_EXPR_STUB
     [[nodiscard]] PartialResult addCatchAll(Stack&, ControlType&) CONST_EXPR_STUB
     [[nodiscard]] PartialResult addCatchAllToUnreachable(ControlType&) CONST_EXPR_STUB
     [[nodiscard]] PartialResult addDelegate(ControlType&, ControlType&) CONST_EXPR_STUB
@@ -679,9 +680,9 @@ public:
         return { };
     }
 
-    [[nodiscard]] PartialResult addCall(unsigned, FunctionSpaceIndex, const TypeDefinition&, ArgumentList&, ResultList&, CallType = CallType::Call) CONST_EXPR_STUB
-    [[nodiscard]] PartialResult addCallIndirect(unsigned, unsigned, const TypeDefinition&, ArgumentList&, ResultList&, CallType = CallType::Call) CONST_EXPR_STUB
-    [[nodiscard]] PartialResult addCallRef(unsigned, const TypeDefinition&, ArgumentList&, ResultList&, CallType = CallType::Call) CONST_EXPR_STUB
+    [[nodiscard]] PartialResult addCall(unsigned, FunctionSpaceIndex, const WasmGCType&, ArgumentList&, ResultList&, CallType = CallType::Call) CONST_EXPR_STUB
+    [[nodiscard]] PartialResult addCallIndirect(unsigned, unsigned, const WasmGCType&, ArgumentList&, ResultList&, CallType = CallType::Call) CONST_EXPR_STUB
+    [[nodiscard]] PartialResult addCallRef(unsigned, const WasmGCType&, ArgumentList&, ResultList&, CallType = CallType::Call) CONST_EXPR_STUB
     [[nodiscard]] PartialResult addUnreachable() CONST_EXPR_STUB
     [[nodiscard]] PartialResult addCrash() CONST_EXPR_STUB
     bool usesSIMD() { return false; }
@@ -739,26 +740,42 @@ private:
 
 Expected<void, String> parseExtendedConstExpr(std::span<const uint8_t> source, size_t offsetInSource, size_t& offset, ModuleInformation& info, Type expectedType)
 {
+    auto* funcType = WasmGCFunctionType::tryCreate(1, 0);
+    RELEASE_ASSERT(funcType);
+    funcType->getReturnType(0) = expectedType;
     ConstExprGenerator generator(ConstExprGenerator::Mode::Validate, offsetInSource, info);
-    FunctionParser<ConstExprGenerator> parser(generator, source, *TypeInformation::typeDefinitionForFunction({ expectedType }, { }), info);
-    WASM_FAIL_IF_HELPER_FAILS(parser.parseConstantExpression());
+    FunctionParser<ConstExprGenerator> parser(generator, source, *funcType, info);
+    auto parseResult = parser.parseConstantExpression();
+    if (!parseResult) {
+        funcType->destroy();
+        return makeUnexpected(parseResult.error());
+    }
     offset = parser.offset();
 
     for (const auto& declaredFunctionIndex : generator.declaredFunctions())
         info.addDeclaredFunction(declaredFunctionIndex);
 
+    funcType->destroy();
     return { };
 }
 
 Expected<uint64_t, String> evaluateExtendedConstExpr(const Vector<uint8_t>& constantExpression, JSWebAssemblyInstance* instance, const ModuleInformation& info, Type expectedType)
 {
+    auto* funcType = WasmGCFunctionType::tryCreate(1, 0);
+    RELEASE_ASSERT(funcType);
+    funcType->getReturnType(0) = expectedType;
     ConstExprGenerator generator(ConstExprGenerator::Mode::Evaluate, info, instance);
-    FunctionParser<ConstExprGenerator> parser(generator, constantExpression, *TypeInformation::typeDefinitionForFunction({ expectedType }, { }), info);
-    WASM_FAIL_IF_HELPER_FAILS(parser.parseConstantExpression());
+    FunctionParser<ConstExprGenerator> parser(generator, constantExpression, *funcType, info);
+    auto parseResult = parser.parseConstantExpression();
+    if (!parseResult) {
+        funcType->destroy();
+        return makeUnexpected(parseResult.error());
+    }
 
     ConstExprGenerator::ExpressionType result = generator.result();
     ASSERT(result.type() != ConstExprGenerator::ExpressionType::Vector);
 
+    funcType->destroy();
     return { result.getValue() };
 }
 

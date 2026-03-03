@@ -31,6 +31,7 @@
 
 #include <JavaScriptCore/JSCJSValue.h>
 #include <JavaScriptCore/WasmCallee.h>
+#include <JavaScriptCore/WasmGCType.h>
 #include <wtf/text/ASCIILiteral.h>
 #include <wtf/text/WTFString.h>
 
@@ -117,7 +118,7 @@ public:
     size_t numParams() const { return m_params.size(); }
     size_t numResults() const { return m_results.size(); }
 
-    bool isValid(const Wasm::FunctionSignature&) const;
+    bool isValid(const Wasm::WasmGCFunctionType&) const;
 
 private:
     Expectations m_results;

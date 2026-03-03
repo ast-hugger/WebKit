@@ -111,6 +111,7 @@
 #include "SuperSampler.h"
 #include "ThunkGenerators.h"
 #include "VirtualRegister.h"
+#include "WasmGCType.h"
 #include "WasmModuleInformation.h"
 #include "WebAssemblyFunction.h"
 #include "YarrJITRegisters.h"
@@ -13901,7 +13902,7 @@ IGNORE_CLANG_WARNINGS_END
         WebAssemblyFunction* wasmFunction = node->castOperand<WebAssemblyFunction*>();
         JSGlobalObject* globalObject = m_graph.globalObjectFor(m_origin.semantic);
 
-        const auto& signature = Wasm::TypeInformation::getFunctionSignature(wasmFunction->typeIndex());
+        const auto& signature = *Wasm::WasmGCType::fromIndex(wasmFunction->typeIndex())->as<Wasm::WasmGCFunctionType>();
         const Wasm::WasmCallingConvention& wasmCC = Wasm::wasmCallingConvention();
         Wasm::CallInformation wasmCallInfo = wasmCC.callInformationFor(signature);
 
