@@ -41,7 +41,7 @@ namespace TestWebKitAPI {
 
 TEST(WTF_InlineMap, Empty)
 {
-    InlineMap<unsigned, unsigned, IntHash<unsigned>> map;
+    InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map;
 
     EXPECT_TRUE(WTF::InlineMapAccessForTesting::isInline(map));
     EXPECT_TRUE(map.isEmpty());
@@ -54,7 +54,7 @@ TEST(WTF_InlineMap, Empty)
 
 TEST(WTF_InlineMap, BasicAddAndFind)
 {
-    InlineMap<unsigned, unsigned, IntHash<unsigned>> map;
+    InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map;
 
     auto result = map.add(1, 100);
     EXPECT_TRUE(result.isNewEntry);
@@ -77,7 +77,7 @@ TEST(WTF_InlineMap, BasicAddAndFind)
 
 TEST(WTF_InlineMap, DuplicateAdd)
 {
-    InlineMap<unsigned, unsigned, IntHash<unsigned>> map;
+    InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map;
 
     auto result1 = map.add(1, 100);
     EXPECT_TRUE(result1.isNewEntry);
@@ -92,7 +92,7 @@ TEST(WTF_InlineMap, DuplicateAdd)
 TEST(WTF_InlineMap, StorageModeTransitions)
 {
     // Explicitly specify InitialCapacity=3 and InitialHashedCapacity=8
-    InlineMap<unsigned, unsigned, IntHash<unsigned>, HashTraits<unsigned>, HashTraits<unsigned>, 3> map;
+    InlineMap<unsigned, unsigned, 3, IntHash<unsigned>> map;
 
     // New map starts empty
     EXPECT_TRUE(WTF::InlineMapAccessForTesting::isInline(map));
@@ -128,7 +128,7 @@ TEST(WTF_InlineMap, StorageModeTransitions)
 TEST(WTF_InlineMap, LinearMode)
 {
     // Explicitly specify InitialCapacity=3 to test linear storage behavior
-    InlineMap<unsigned, unsigned, IntHash<unsigned>, HashTraits<unsigned>, HashTraits<unsigned>, 3> map;
+    InlineMap<unsigned, unsigned, 3, IntHash<unsigned>> map;
 
     EXPECT_TRUE(WTF::InlineMapAccessForTesting::isInline(map));
 
@@ -153,7 +153,7 @@ TEST(WTF_InlineMap, LinearMode)
 TEST(WTF_InlineMap, GrowToHashedMode)
 {
     // Explicitly specify InitialCapacity=3 and InitialHashedCapacity=8
-    InlineMap<unsigned, unsigned, IntHash<unsigned>, HashTraits<unsigned>, HashTraits<unsigned>, 3> map;
+    InlineMap<unsigned, unsigned, 3, IntHash<unsigned>> map;
 
     EXPECT_TRUE(WTF::InlineMapAccessForTesting::isInline(map));
 
@@ -189,7 +189,7 @@ TEST(WTF_InlineMap, GrowToHashedMode)
 
 TEST(WTF_InlineMap, Iteration)
 {
-    InlineMap<unsigned, unsigned, IntHash<unsigned>> map;
+    InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map;
 
     for (unsigned i = 1; i <= 10; ++i)
         map.add(i, i * 10);
@@ -212,7 +212,7 @@ TEST(WTF_InlineMap, Iteration)
 
 TEST(WTF_InlineMap, IterationAfterGrowth)
 {
-    InlineMap<unsigned, unsigned, IntHash<unsigned>> map;
+    InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map;
 
     for (unsigned i = 1; i <= 100; ++i)
         map.add(i, i * 10);
@@ -232,12 +232,12 @@ TEST(WTF_InlineMap, IterationAfterGrowth)
 
 TEST(WTF_InlineMap, MoveConstruction)
 {
-    InlineMap<unsigned, unsigned, IntHash<unsigned>> map1;
+    InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map1;
 
     for (unsigned i = 1; i <= 10; ++i)
         map1.add(i, i * 10);
 
-    InlineMap<unsigned, unsigned, IntHash<unsigned>> map2(WTF::move(map1));
+    InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map2(WTF::move(map1));
 
     EXPECT_TRUE(map1.isEmpty());
     EXPECT_EQ(map2.size(), 10u);
@@ -250,8 +250,8 @@ TEST(WTF_InlineMap, MoveConstruction)
 
 TEST(WTF_InlineMap, MoveAssignment)
 {
-    InlineMap<unsigned, unsigned, IntHash<unsigned>> map1;
-    InlineMap<unsigned, unsigned, IntHash<unsigned>> map2;
+    InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map1;
+    InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map2;
 
     for (unsigned i = 1; i <= 10; ++i)
         map1.add(i, i * 10);
@@ -270,9 +270,9 @@ TEST(WTF_InlineMap, MoveAssignment)
 
 TEST(WTF_InlineMap, CopyConstructionEmpty)
 {
-    InlineMap<unsigned, unsigned, IntHash<unsigned>> map1;
+    InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map1;
 
-    InlineMap<unsigned, unsigned, IntHash<unsigned>> map2(map1);
+    InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map2(map1);
 
     EXPECT_TRUE(map1.isEmpty());
     EXPECT_TRUE(map2.isEmpty());
@@ -282,13 +282,13 @@ TEST(WTF_InlineMap, CopyConstructionEmpty)
 
 TEST(WTF_InlineMap, CopyConstructionLinearMode)
 {
-    InlineMap<unsigned, unsigned, IntHash<unsigned>, HashTraits<unsigned>, HashTraits<unsigned>, 3> map1;
+    InlineMap<unsigned, unsigned, 3, IntHash<unsigned>> map1;
 
     map1.add(1, 10);
     map1.add(2, 20);
     EXPECT_TRUE(WTF::InlineMapAccessForTesting::isInline(map1));
 
-    InlineMap<unsigned, unsigned, IntHash<unsigned>, HashTraits<unsigned>, HashTraits<unsigned>, 3> map2(map1);
+    InlineMap<unsigned, unsigned, 3, IntHash<unsigned>> map2(map1);
 
     // Original should be unchanged
     EXPECT_EQ(map1.size(), 2u);
@@ -314,14 +314,14 @@ TEST(WTF_InlineMap, CopyConstructionLinearMode)
 
 TEST(WTF_InlineMap, CopyConstructionHashedMode)
 {
-    InlineMap<unsigned, unsigned, IntHash<unsigned>> map1;
+    InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map1;
 
     for (unsigned i = 1; i <= 20; ++i)
         map1.add(i, i * 10);
 
     EXPECT_FALSE(WTF::InlineMapAccessForTesting::isInline(map1));
 
-    InlineMap<unsigned, unsigned, IntHash<unsigned>> map2(map1);
+    InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map2(map1);
 
     // Original should be unchanged
     EXPECT_EQ(map1.size(), 20u);
@@ -347,8 +347,8 @@ TEST(WTF_InlineMap, CopyConstructionHashedMode)
 
 TEST(WTF_InlineMap, CopyAssignment)
 {
-    InlineMap<unsigned, unsigned, IntHash<unsigned>> map1;
-    InlineMap<unsigned, unsigned, IntHash<unsigned>> map2;
+    InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map1;
+    InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map2;
 
     for (unsigned i = 1; i <= 10; ++i)
         map1.add(i, i * 10);
@@ -373,7 +373,7 @@ TEST(WTF_InlineMap, CopyAssignment)
 
 TEST(WTF_InlineMap, CopyAssignmentToSelf)
 {
-    InlineMap<unsigned, unsigned, IntHash<unsigned>> map;
+    InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map;
 
     for (unsigned i = 1; i <= 10; ++i)
         map.add(i, i * 10);
@@ -392,13 +392,13 @@ TEST(WTF_InlineMap, CopyAssignmentToSelf)
 
 TEST(WTF_InlineMap, CopyConstructionWithStrings)
 {
-    InlineMap<String, String, StringHash> map1;
+    InlineMap<String, String, 5, StringHash> map1;
 
     map1.add("key1"_s, "value1"_s);
     map1.add("key2"_s, "value2"_s);
     map1.add("key3"_s, "value3"_s);
 
-    InlineMap<String, String, StringHash> map2(map1);
+    InlineMap<String, String, 5, StringHash> map2(map1);
 
     EXPECT_EQ(map1.size(), 3u);
     EXPECT_EQ(map2.size(), 3u);
@@ -413,7 +413,7 @@ TEST(WTF_InlineMap, CopyConstructionWithStrings)
 
 TEST(WTF_InlineMap, RemoveFromEmpty)
 {
-    InlineMap<unsigned, unsigned, IntHash<unsigned>> map;
+    InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map;
 
     EXPECT_FALSE(map.remove(1));
     EXPECT_TRUE(map.isEmpty());
@@ -421,7 +421,7 @@ TEST(WTF_InlineMap, RemoveFromEmpty)
 
 TEST(WTF_InlineMap, RemoveLinearMode)
 {
-    InlineMap<unsigned, unsigned, IntHash<unsigned>, HashTraits<unsigned>, HashTraits<unsigned>, 3> map;
+    InlineMap<unsigned, unsigned, 3, IntHash<unsigned>> map;
 
     map.add(1, 10);
     map.add(2, 20);
@@ -456,7 +456,7 @@ TEST(WTF_InlineMap, RemoveLinearMode)
 
 TEST(WTF_InlineMap, RemoveNonexistentLinearMode)
 {
-    InlineMap<unsigned, unsigned, IntHash<unsigned>, HashTraits<unsigned>, HashTraits<unsigned>, 3> map;
+    InlineMap<unsigned, unsigned, 3, IntHash<unsigned>> map;
 
     map.add(1, 10);
     map.add(2, 20);
@@ -470,7 +470,7 @@ TEST(WTF_InlineMap, RemoveNonexistentLinearMode)
 
 TEST(WTF_InlineMap, RemoveHashedMode)
 {
-    InlineMap<unsigned, unsigned, IntHash<unsigned>> map;
+    InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map;
 
     for (unsigned i = 1; i <= 20; ++i)
         map.add(i, i * 10);
@@ -503,7 +503,7 @@ TEST(WTF_InlineMap, RemoveHashedMode)
 
 TEST(WTF_InlineMap, RemoveAndReaddHashedMode)
 {
-    InlineMap<unsigned, unsigned, IntHash<unsigned>> map;
+    InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map;
 
     for (unsigned i = 1; i <= 10; ++i)
         map.add(i, i * 10);
@@ -523,7 +523,7 @@ TEST(WTF_InlineMap, RemoveAndReaddHashedMode)
 
 TEST(WTF_InlineMap, RemoveAllHashedMode)
 {
-    InlineMap<unsigned, unsigned, IntHash<unsigned>> map;
+    InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map;
 
     for (unsigned i = 1; i <= 10; ++i)
         map.add(i, i * 10);
@@ -544,7 +544,7 @@ TEST(WTF_InlineMap, RemoveAllHashedMode)
 
 TEST(WTF_InlineMap, IterationAfterRemove)
 {
-    InlineMap<unsigned, unsigned, IntHash<unsigned>> map;
+    InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map;
 
     for (unsigned i = 1; i <= 10; ++i)
         map.add(i, i * 10);
@@ -573,7 +573,7 @@ TEST(WTF_InlineMap, IterationAfterRemove)
 
 TEST(WTF_InlineMap, RemoveWithStrings)
 {
-    InlineMap<String, unsigned, StringHash> map;
+    InlineMap<String, unsigned, 5, StringHash> map;
 
     map.add("one"_s, 1);
     map.add("two"_s, 2);
@@ -591,7 +591,7 @@ TEST(WTF_InlineMap, RemoveWithStrings)
 
 TEST(WTF_InlineMap, GrowAfterRemove)
 {
-    InlineMap<unsigned, unsigned, IntHash<unsigned>, HashTraits<unsigned>, HashTraits<unsigned>, 3> map;
+    InlineMap<unsigned, unsigned, 3, IntHash<unsigned>> map;
 
     // Fill to trigger hashed mode
     for (unsigned i = 1; i <= 4; ++i)
@@ -619,7 +619,7 @@ TEST(WTF_InlineMap, GrowAfterRemove)
 
 TEST(WTF_InlineMap, PointerKeys)
 {
-    InlineMap<int*, int> map;
+    InlineMap<int*, int, 5> map;
 
     constexpr unsigned arraySize = 50;
     int array[arraySize];
@@ -645,7 +645,7 @@ TEST(WTF_InlineMap, PointerKeys)
 
 TEST(WTF_InlineMap, ConstIteration)
 {
-    InlineMap<unsigned, unsigned, IntHash<unsigned>> map;
+    InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map;
 
     for (unsigned i = 1; i <= 10; ++i)
         map.add(i, i * 10);
@@ -663,7 +663,7 @@ TEST(WTF_InlineMap, ConstIteration)
 
 TEST(WTF_InlineMap, ConstFind)
 {
-    InlineMap<unsigned, unsigned, IntHash<unsigned>> map;
+    InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map;
     map.add(1, 100);
 
     const auto& constMap = map;
@@ -678,7 +678,7 @@ TEST(WTF_InlineMap, ConstFind)
 
 TEST(WTF_InlineMap, MoveOnlyValues)
 {
-    InlineMap<unsigned, MoveOnly, IntHash<unsigned>> map;
+    InlineMap<unsigned, MoveOnly, 5, IntHash<unsigned>> map;
 
     for (size_t i = 0; i < 100; ++i) {
         MoveOnly moveOnly(i + 1);
@@ -697,7 +697,7 @@ TEST(WTF_InlineMap, MoveOnlyValues)
 
 TEST(WTF_InlineMap, MoveOnlyKeys)
 {
-    InlineMap<MoveOnly, unsigned, DefaultHash<MoveOnly>> map;
+    InlineMap<MoveOnly, unsigned, 5, DefaultHash<MoveOnly>> map;
 
     for (size_t i = 0; i < 100; ++i) {
         MoveOnly moveOnly(i + 1);
@@ -729,7 +729,7 @@ template<typename T> struct ZeroHash : public IntHash<T> {
 TEST(WTF_InlineMap, HashCollisions)
 {
     // Use a hash that always returns 0 to force all entries into the same bucket
-    InlineMap<unsigned, unsigned, ZeroHash<unsigned>> map;
+    InlineMap<unsigned, unsigned, 5, ZeroHash<unsigned>> map;
 
     // Add enough entries to trigger hashed mode
     for (unsigned i = 1; i <= 20; ++i) {
@@ -753,13 +753,13 @@ TEST(WTF_InlineMap, HashCollisions)
 
 TEST(WTF_InlineMap, IteratorComparison)
 {
-    InlineMap<unsigned, unsigned, IntHash<unsigned>> map;
+    InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map;
     map.add(1, 100);
 
     ASSERT_TRUE(map.begin() != map.end());
     ASSERT_FALSE(map.begin() == map.end());
 
-    InlineMap<unsigned, unsigned, IntHash<unsigned>>::const_iterator begin = map.begin();
+    InlineMap<unsigned, unsigned, 5, IntHash<unsigned>>::const_iterator begin = map.begin();
     ASSERT_TRUE(begin == map.begin());
     ASSERT_TRUE(map.begin() == begin);
     ASSERT_TRUE(begin != map.end());
@@ -819,7 +819,7 @@ TEST(WTF_InlineMap, DestructorCalledOnClear)
     DestructorCounter::TestingScope scope;
 
     {
-        InlineMap<unsigned, DestructorCounter, IntHash<unsigned>> map;
+        InlineMap<unsigned, DestructorCounter, 5, IntHash<unsigned>> map;
 
         for (unsigned i = 1; i <= 3; ++i)
             map.add(i, DestructorCounter(i));
@@ -838,7 +838,7 @@ TEST(WTF_InlineMap, DestructorCalledOnClearAfterGrowth)
     unsigned countBeforeDestruction = 0;
 
     {
-        InlineMap<unsigned, DestructorCounter, IntHash<unsigned>> map;
+        InlineMap<unsigned, DestructorCounter, 5, IntHash<unsigned>> map;
 
         for (unsigned i = 1; i <= 100; ++i)
             map.add(i, DestructorCounter(i));
@@ -856,7 +856,7 @@ TEST(WTF_InlineMap, DestructorCalledOnClearAfterGrowth)
 
 TEST(WTF_InlineMap, StringKeys)
 {
-    InlineMap<String, unsigned, StringHash> map;
+    InlineMap<String, unsigned, 5, StringHash> map;
 
     map.add("one"_s, 1);
     map.add("two"_s, 2);
@@ -875,7 +875,7 @@ TEST(WTF_InlineMap, StringKeys)
 
 TEST(WTF_InlineMap, StringValues)
 {
-    InlineMap<unsigned, String, IntHash<unsigned>> map;
+    InlineMap<unsigned, String, 5, IntHash<unsigned>> map;
 
     map.add(1, "one"_s);
     map.add(2, "two"_s);
@@ -889,7 +889,7 @@ TEST(WTF_InlineMap, StringValues)
 
 TEST(WTF_InlineMap, StringKeysAndValues)
 {
-    InlineMap<String, String, StringHash> map;
+    InlineMap<String, String, 5, StringHash> map;
 
     map.add("key1"_s, "value1"_s);
     map.add("key2"_s, "value2"_s);
@@ -908,7 +908,7 @@ TEST(WTF_InlineMap, StringKeysAndValues)
 
 TEST(WTF_InlineMap, StringKeysGrowth)
 {
-    InlineMap<String, unsigned, StringHash> map;
+    InlineMap<String, unsigned, 5, StringHash> map;
 
     // Add enough entries to trigger growth to hashed mode
     for (unsigned i = 1; i <= 100; ++i)
@@ -934,7 +934,7 @@ TEST(WTF_InlineMap, RefPtrKeys)
     DerivedRefLogger b("b");
     DerivedRefLogger c("c");
 
-    InlineMap<RefPtr<RefLogger>, int> map;
+    InlineMap<RefPtr<RefLogger>, int, 5> map;
 
     map.add(RefPtr<RefLogger>(&a), 1);
     map.add(RefPtr<RefLogger>(&b), 2);
@@ -955,7 +955,7 @@ TEST(WTF_InlineMap, RefPtrValues)
     DerivedRefLogger a("a");
     DerivedRefLogger b("b");
 
-    InlineMap<unsigned, RefPtr<RefLogger>, IntHash<unsigned>> map;
+    InlineMap<unsigned, RefPtr<RefLogger>, 5, IntHash<unsigned>> map;
 
     map.add(1, RefPtr<RefLogger>(&a));
     map.add(2, RefPtr<RefLogger>(&b));
@@ -970,7 +970,7 @@ TEST(WTF_InlineMap, RefKeys)
     RefLogger a("a");
 
     {
-        InlineMap<Ref<RefLogger>, int> map;
+        InlineMap<Ref<RefLogger>, int, 5> map;
 
         Ref<RefLogger> ref(a);
         map.add(WTF::move(ref), 1);
@@ -996,7 +996,7 @@ TEST(WTF_InlineMap, RefValues)
     RefLogger a("a");
 
     {
-        InlineMap<unsigned, Ref<RefLogger>, IntHash<unsigned>> map;
+        InlineMap<unsigned, Ref<RefLogger>, 5, IntHash<unsigned>> map;
 
         Ref<RefLogger> ref(a);
         map.add(1, WTF::move(ref));
@@ -1016,7 +1016,7 @@ TEST(WTF_InlineMap, RefKeysGrowth)
         loggers.append(adoptRef(*new RefLogger("a")));
 
     {
-        InlineMap<Ref<RefLogger>, int> map;
+        InlineMap<Ref<RefLogger>, int, 5> map;
 
         for (int i = 0; i < 50; ++i) {
             Ref<RefLogger> ref = loggers[i].copyRef();
@@ -1039,7 +1039,7 @@ TEST(WTF_InlineMap, RefKeysGrowth)
 
 TEST(WTF_InlineMap, ClearEmpty)
 {
-    InlineMap<unsigned, unsigned, IntHash<unsigned>> map;
+    InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map;
 
     map.clear();
 
@@ -1049,7 +1049,7 @@ TEST(WTF_InlineMap, ClearEmpty)
 
 TEST(WTF_InlineMap, ClearLinearMode)
 {
-    InlineMap<unsigned, unsigned, IntHash<unsigned>, HashTraits<unsigned>, HashTraits<unsigned>, 3> map;
+    InlineMap<unsigned, unsigned, 3, IntHash<unsigned>> map;
 
     map.add(1, 10);
     map.add(2, 20);
@@ -1073,7 +1073,7 @@ TEST(WTF_InlineMap, ClearLinearMode)
 
 TEST(WTF_InlineMap, ClearHashedMode)
 {
-    InlineMap<unsigned, unsigned, IntHash<unsigned>> map;
+    InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map;
 
     for (unsigned i = 1; i <= 20; ++i)
         map.add(i, i * 10);
@@ -1100,7 +1100,7 @@ TEST(WTF_InlineMap, ClearHashedMode)
 
 TEST(WTF_InlineMap, ClearWithStrings)
 {
-    InlineMap<String, String, StringHash> map;
+    InlineMap<String, String, 5, StringHash> map;
 
     map.add("key1"_s, "value1"_s);
     map.add("key2"_s, "value2"_s);
@@ -1116,7 +1116,7 @@ TEST(WTF_InlineMap, ClearWithStrings)
 
 TEST(WTF_InlineMap, ReserveInitialCapacityZero)
 {
-    InlineMap<unsigned, unsigned, IntHash<unsigned>> map;
+    InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map;
 
     map.reserveInitialCapacity(0);
 
@@ -1126,7 +1126,7 @@ TEST(WTF_InlineMap, ReserveInitialCapacityZero)
 
 TEST(WTF_InlineMap, ReserveInitialCapacityLinear)
 {
-    InlineMap<unsigned, unsigned, IntHash<unsigned>, HashTraits<unsigned>, HashTraits<unsigned>, 3> map;
+    InlineMap<unsigned, unsigned, 3, IntHash<unsigned>> map;
 
     map.reserveInitialCapacity(2);
 
@@ -1144,7 +1144,7 @@ TEST(WTF_InlineMap, ReserveInitialCapacityLinear)
 
 TEST(WTF_InlineMap, ReserveInitialCapacityHashed)
 {
-    InlineMap<unsigned, unsigned, IntHash<unsigned>, HashTraits<unsigned>, HashTraits<unsigned>, 3> map;
+    InlineMap<unsigned, unsigned, 3, IntHash<unsigned>> map;
 
     map.reserveInitialCapacity(10);
 
@@ -1165,7 +1165,7 @@ TEST(WTF_InlineMap, ReserveInitialCapacityHashed)
 
 TEST(WTF_InlineMap, ReserveInitialCapacityLarge)
 {
-    InlineMap<unsigned, unsigned, IntHash<unsigned>> map;
+    InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map;
 
     map.reserveInitialCapacity(100);
 
@@ -1183,7 +1183,7 @@ TEST(WTF_InlineMap, ReserveInitialCapacityLarge)
 
 TEST(WTF_InlineMap, ValuesIteration)
 {
-    InlineMap<unsigned, unsigned, IntHash<unsigned>> map;
+    InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map;
 
     for (unsigned i = 1; i <= 10; ++i)
         map.add(i, i * 10);
@@ -1202,7 +1202,7 @@ TEST(WTF_InlineMap, ValuesIteration)
 
 TEST(WTF_InlineMap, ValuesIterationModify)
 {
-    InlineMap<unsigned, unsigned, IntHash<unsigned>> map;
+    InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map;
 
     for (unsigned i = 1; i <= 5; ++i)
         map.add(i, i);
@@ -1218,7 +1218,7 @@ TEST(WTF_InlineMap, ValuesIterationModify)
 
 TEST(WTF_InlineMap, ValuesIterationEmpty)
 {
-    InlineMap<unsigned, unsigned, IntHash<unsigned>> map;
+    InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map;
 
     unsigned count = 0;
     for (auto& value : map.values()) {
@@ -1231,7 +1231,7 @@ TEST(WTF_InlineMap, ValuesIterationEmpty)
 
 TEST(WTF_InlineMap, ValuesIterationConst)
 {
-    InlineMap<unsigned, unsigned, IntHash<unsigned>> map;
+    InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map;
 
     for (unsigned i = 1; i <= 5; ++i)
         map.add(i, i * 10);
@@ -1246,8 +1246,8 @@ TEST(WTF_InlineMap, ValuesIterationConst)
 
 TEST(WTF_InlineMap, SwapBothEmpty)
 {
-    InlineMap<unsigned, unsigned, IntHash<unsigned>> map1;
-    InlineMap<unsigned, unsigned, IntHash<unsigned>> map2;
+    InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map1;
+    InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map2;
 
     map1.swap(map2);
 
@@ -1257,8 +1257,8 @@ TEST(WTF_InlineMap, SwapBothEmpty)
 
 TEST(WTF_InlineMap, SwapOneEmpty)
 {
-    InlineMap<unsigned, unsigned, IntHash<unsigned>> map1;
-    InlineMap<unsigned, unsigned, IntHash<unsigned>> map2;
+    InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map1;
+    InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map2;
 
     for (unsigned i = 1; i <= 5; ++i)
         map1.add(i, i * 10);
@@ -1278,8 +1278,8 @@ TEST(WTF_InlineMap, SwapOneEmpty)
 
 TEST(WTF_InlineMap, SwapBothPopulated)
 {
-    InlineMap<unsigned, unsigned, IntHash<unsigned>> map1;
-    InlineMap<unsigned, unsigned, IntHash<unsigned>> map2;
+    InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map1;
+    InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map2;
 
     for (unsigned i = 1; i <= 5; ++i)
         map1.add(i, i * 10);
@@ -1312,8 +1312,8 @@ TEST(WTF_InlineMap, SwapBothPopulated)
 
 TEST(WTF_InlineMap, SwapWithStrings)
 {
-    InlineMap<String, String, StringHash> map1;
-    InlineMap<String, String, StringHash> map2;
+    InlineMap<String, String, 5, StringHash> map1;
+    InlineMap<String, String, 5, StringHash> map2;
 
     map1.add("key1"_s, "value1"_s);
     map1.add("key2"_s, "value2"_s);
@@ -1341,7 +1341,7 @@ TEST(WTF_InlineMap, PackedRefPtrKeysBasic)
     strings.append("beta"_s);
     strings.append("gamma"_s);
 
-    InlineMap<PackedRefPtr<StringImpl>, unsigned> map;
+    InlineMap<PackedRefPtr<StringImpl>, unsigned, 5> map;
 
     for (unsigned i = 0; i < strings.size(); ++i) {
         auto result = map.add(strings[i].impl(), i + 1);
@@ -1368,7 +1368,7 @@ TEST(WTF_InlineMap, PackedRefPtrKeysGrowth)
     for (unsigned i = 0; i < count; ++i)
         strings.append(makeString("key_"_s, i));
 
-    InlineMap<PackedRefPtr<StringImpl>, unsigned> map;
+    InlineMap<PackedRefPtr<StringImpl>, unsigned, 5> map;
 
     for (unsigned i = 0; i < count; ++i) {
         auto result = map.add(strings[i].impl(), i * 10);
@@ -1395,7 +1395,7 @@ TEST(WTF_InlineMap, PackedRefPtrKeysRemoveAndReinsert)
     for (unsigned i = 0; i < count; ++i)
         strings.append(makeString("var_"_s, i));
 
-    InlineMap<PackedRefPtr<StringImpl>, unsigned> map;
+    InlineMap<PackedRefPtr<StringImpl>, unsigned, 5> map;
 
     for (unsigned i = 0; i < count; ++i)
         map.add(strings[i].impl(), i);
@@ -1437,14 +1437,14 @@ TEST(WTF_InlineMap, PackedRefPtrKeysCopy)
     for (unsigned i = 0; i < count; ++i)
         strings.append(makeString("name_"_s, i));
 
-    InlineMap<PackedRefPtr<StringImpl>, unsigned> map1;
+    InlineMap<PackedRefPtr<StringImpl>, unsigned, 5> map1;
 
     for (unsigned i = 0; i < count; ++i)
         map1.add(strings[i].impl(), i);
 
     EXPECT_FALSE(WTF::InlineMapAccessForTesting::isInline(map1));
 
-    InlineMap<PackedRefPtr<StringImpl>, unsigned> map2(map1);
+    InlineMap<PackedRefPtr<StringImpl>, unsigned, 5> map2(map1);
 
     EXPECT_EQ(map1.size(), count);
     EXPECT_EQ(map2.size(), count);
@@ -1466,7 +1466,7 @@ TEST(WTF_InlineMap, PackedRefPtrKeysCopy)
 
 TEST(WTF_InlineMap, StressInsertions)
 {
-    InlineMap<unsigned, unsigned, IntHash<unsigned>> map;
+    InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map;
 
     for (unsigned i = 1; i <= 1000; ++i) {
         auto result = map.add(i, i * 10);
@@ -1488,7 +1488,7 @@ TEST(WTF_InlineMap, StressInsertions)
 
 TEST(WTF_InlineMap, StressInsertRemoveReinsert)
 {
-    InlineMap<unsigned, unsigned, IntHash<unsigned>> map;
+    InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map;
 
     // Add 200 entries
     for (unsigned i = 1; i <= 200; ++i)
@@ -1529,7 +1529,7 @@ TEST(WTF_InlineMap, StressInsertRemoveReinsert)
 
 TEST(WTF_InlineMap, StressRemoveAll)
 {
-    InlineMap<unsigned, unsigned, IntHash<unsigned>> map;
+    InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map;
 
     // Add 500 entries
     for (unsigned i = 1; i <= 500; ++i)
@@ -1563,7 +1563,7 @@ TEST(WTF_InlineMap, StressRemoveAll)
 
 TEST(WTF_InlineMap, DuplicateAddHashedMode)
 {
-    InlineMap<unsigned, unsigned, IntHash<unsigned>> map;
+    InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map;
 
     for (unsigned i = 1; i <= 20; ++i)
         map.add(i, i * 10);
@@ -1583,7 +1583,7 @@ TEST(WTF_InlineMap, DuplicateAddHashedMode)
 
 TEST(WTF_InlineMap, IterationInlineMode)
 {
-    InlineMap<unsigned, unsigned, IntHash<unsigned>> map;
+    InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map;
 
     for (unsigned i = 1; i <= 3; ++i)
         map.add(i, i * 10);
@@ -1607,14 +1607,14 @@ TEST(WTF_InlineMap, IterationInlineMode)
 
 TEST(WTF_InlineMap, MoveConstructionInlineMode)
 {
-    InlineMap<unsigned, unsigned, IntHash<unsigned>> map1;
+    InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map1;
 
     for (unsigned i = 1; i <= 3; ++i)
         map1.add(i, i * 10);
 
     EXPECT_TRUE(WTF::InlineMapAccessForTesting::isInline(map1));
 
-    InlineMap<unsigned, unsigned, IntHash<unsigned>> map2(WTF::move(map1));
+    InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map2(WTF::move(map1));
 
     EXPECT_TRUE(map1.isEmpty());
     EXPECT_TRUE(WTF::InlineMapAccessForTesting::isInline(map1));
@@ -1629,14 +1629,14 @@ TEST(WTF_InlineMap, MoveConstructionInlineMode)
 
 TEST(WTF_InlineMap, MoveConstructionHashedMode)
 {
-    InlineMap<unsigned, unsigned, IntHash<unsigned>> map1;
+    InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map1;
 
     for (unsigned i = 1; i <= 20; ++i)
         map1.add(i, i * 10);
 
     EXPECT_FALSE(WTF::InlineMapAccessForTesting::isInline(map1));
 
-    InlineMap<unsigned, unsigned, IntHash<unsigned>> map2(WTF::move(map1));
+    InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map2(WTF::move(map1));
 
     EXPECT_TRUE(map1.isEmpty());
     EXPECT_TRUE(WTF::InlineMapAccessForTesting::isInline(map1)); // Reset to inline after move
@@ -1651,8 +1651,8 @@ TEST(WTF_InlineMap, MoveConstructionHashedMode)
 
 TEST(WTF_InlineMap, MoveAssignmentInlineToInline)
 {
-    InlineMap<unsigned, unsigned, IntHash<unsigned>> map1;
-    InlineMap<unsigned, unsigned, IntHash<unsigned>> map2;
+    InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map1;
+    InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map2;
 
     for (unsigned i = 1; i <= 3; ++i)
         map1.add(i, i * 10);
@@ -1676,8 +1676,8 @@ TEST(WTF_InlineMap, MoveAssignmentInlineToInline)
 
 TEST(WTF_InlineMap, SwapInlineAndHashed)
 {
-    InlineMap<unsigned, unsigned, IntHash<unsigned>> inlineMap;
-    InlineMap<unsigned, unsigned, IntHash<unsigned>> hashedMap;
+    InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> inlineMap;
+    InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> hashedMap;
 
     for (unsigned i = 1; i <= 3; ++i)
         inlineMap.add(i, i * 10);
@@ -1711,7 +1711,7 @@ TEST(WTF_InlineMap, SwapInlineAndHashed)
 
 TEST(WTF_InlineMap, ClearThenGrow)
 {
-    InlineMap<unsigned, unsigned, IntHash<unsigned>> map;
+    InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map;
 
     for (unsigned i = 1; i <= 20; ++i)
         map.add(i, i * 10);
@@ -1739,7 +1739,7 @@ TEST(WTF_InlineMap, ClearThenGrow)
 
 TEST(WTF_InlineMap, CopyWithDeletedEntries)
 {
-    InlineMap<unsigned, unsigned, IntHash<unsigned>> map1;
+    InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map1;
 
     for (unsigned i = 1; i <= 20; ++i)
         map1.add(i, i * 10);
@@ -1755,7 +1755,7 @@ TEST(WTF_InlineMap, CopyWithDeletedEntries)
 
     EXPECT_EQ(map1.size(), 15u);
 
-    InlineMap<unsigned, unsigned, IntHash<unsigned>> map2(map1);
+    InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map2(map1);
 
     EXPECT_EQ(map2.size(), 15u);
 
@@ -1777,7 +1777,7 @@ TEST(WTF_InlineMap, CopyWithDeletedEntries)
 
 TEST(WTF_InlineMap, RemoveLastInlineEntry)
 {
-    InlineMap<unsigned, unsigned, IntHash<unsigned>> map;
+    InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map;
 
     map.add(42, 420);
     EXPECT_TRUE(WTF::InlineMapAccessForTesting::isInline(map));

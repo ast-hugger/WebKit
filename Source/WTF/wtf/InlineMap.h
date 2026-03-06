@@ -39,12 +39,17 @@
 
 namespace WTF {
 
-// A map that stores entries inline with linear lookup for small sizes and switches to hashed heap
-// storage only after growing past a certain point. The switchover happens when the map size exceeds
-// the InlineCapacity template parameter. InlineCapacity does not need to be any special number such
-// as a power of 2.
+// An unchecked key map that stores entries inline with linear lookup for small sizes and
+// switches to hashed heap storage only after growing past a certain point. The switchover
+// happens when the map size exceeds the InlineCapacity template parameter. InlineCapacity
+// does not need to be any special value such as a power of 2.
+//
+// Unchecked key means that inserted keys are only checked for not being empty or deleted
+// values in debug builds. In release builds such insertions would corrupt the map.
+//
+// The class is intended to be a drop-in replacement of UncheckedKeyHashMap.
 
-template<typename KeyArg, typename ValueArg, typename HashArg = PtrHash<KeyArg>, typename KeyTraitsArg = HashTraits<KeyArg>, typename MappedTraitsArg = HashTraits<ValueArg>, unsigned InlineCapacity = 5>
+template<typename KeyArg, typename ValueArg, unsigned InlineCapacity, typename HashArg = PtrHash<KeyArg>, typename KeyTraitsArg = HashTraits<KeyArg>, typename MappedTraitsArg = HashTraits<ValueArg>>
 class InlineMap {
 public:
     using KeyType = KeyArg;
@@ -143,6 +148,7 @@ WTF_ALLOW_UNSAFE_BUFFER_USAGE_BEGIN
             : m_current(current)
             , m_end(end)
         {
+            skipEmpty();
         }
 
         Entry& operator*() const { return *m_current; }
@@ -157,15 +163,15 @@ WTF_ALLOW_UNSAFE_BUFFER_USAGE_BEGIN
 
         bool operator==(const iterator& other) const { return m_current == other.m_current; }
 
+        ValuesIterator values() const { return ValuesIterator(*this); }
+
+    private:
         void skipEmpty()
         {
             while (m_current != m_end && isEmptyOrDeletedEntry(*m_current))
                 ++m_current;
         }
 
-        ValuesIterator values() const { return ValuesIterator(*this); }
-
-    private:
         Entry* m_current { nullptr };
         Entry* m_end { nullptr };
     };
@@ -209,6 +215,7 @@ WTF_ALLOW_UNSAFE_BUFFER_USAGE_BEGIN
     AddResult add(K&& key, V&& value) LIFETIME_BOUND
     {
         ASSERT(!isEmptyKey(key));
+        ASSERT(!KeyTraits::isDeletedValue(key));
 
         unsigned size = m_size;
         if (isInline()) [[likely]] {
@@ -234,7 +241,7 @@ WTF_ALLOW_UNSAFE_BUFFER_USAGE_BEGIN
             grow();
 
         Entry* end = entriesEnd();
-        Entry* slot = findBucketForInsertion(key);
+        Entry* slot = findKeyOrEmptyOrDeleted(key);
         if (!isEmptyOrDeletedEntry(*slot))
             return { iterator { slot, end }, false };
 
@@ -259,7 +266,7 @@ WTF_ALLOW_UNSAFE_BUFFER_USAGE_BEGIN
             return false;
         }
 
-        return !isEmptyOrDeletedEntry(*findBucketForLookup(key));
+        return !isEmptyOrDeletedEntry(*findKeyOrEmpty(key));
     }
 
     template<typename K>
@@ -278,7 +285,7 @@ WTF_ALLOW_UNSAFE_BUFFER_USAGE_BEGIN
             return iterator { end, end };
         }
 
-        Entry* slot = findBucketForLookup(key);
+        Entry* slot = findKeyOrEmpty(key);
         Entry* end = m_storage.heapEntries + m_capacity;
         if (isEmptyOrDeletedEntry(*slot))
             return iterator { end, end };
@@ -308,7 +315,7 @@ WTF_ALLOW_UNSAFE_BUFFER_USAGE_BEGIN
                     if (i != m_size) {
                         // Move last entry to fill the gap
                         new (&entryStorage[i]) Entry(WTF::move(entryStorage[m_size]));
-                        // Assuming a moved-from entry doesn't need destruction
+                        // Assuming the moved-from entry is trivially destructible
                     }
                     return true;
                 }
@@ -317,7 +324,7 @@ WTF_ALLOW_UNSAFE_BUFFER_USAGE_BEGIN
         }
 
         // Hashed mode - mark as deleted
-        Entry* slot = findBucketForLookup(key);
+        Entry* slot = findKeyOrEmpty(key);
         if (isEmptyOrDeletedEntry(*slot))
             return false;
 
@@ -332,11 +339,7 @@ WTF_ALLOW_UNSAFE_BUFFER_USAGE_BEGIN
         if (m_size == 0)
             return iterator { nullptr, nullptr };
 
-        Entry* entryStorage = entries();
-        Entry* end = entriesEnd();
-        iterator it { entryStorage, end };
-        it.skipEmpty();
-        return it;
+        return iterator { entries(), entriesEnd() };
     }
 
     const_iterator begin() const LIFETIME_BOUND
@@ -528,12 +531,12 @@ private:
 
         // Move old entries directly into new buffer
         for (unsigned i = 0; i < oldSize; ++i) {
-            Entry* slot = findBucketForLookupInStorage(oldEntries[i].key, newEntries, newCapacity);
+            Entry* slot = findKeyOrEmptyInStorage(oldEntries[i].key, newEntries, newCapacity);
             ASSERT(isEmptyEntry(*slot));
             new (slot) Entry(WTF::move(oldEntries[i]));
         }
+        // Assuming the moved-from entries in the old storage are trivially destructible
 
-        // We assume the moved-from entries in the old storage don't need destruction
         m_capacity = newCapacity;
         m_storage.heapEntries = newEntries;
     }
@@ -554,7 +557,7 @@ private:
         // Rehash old entries into new buffer
         for (unsigned i = 0; i < oldCapacity; ++i) {
             if (!isEmptyOrDeletedEntry(oldEntries[i])) {
-                Entry* slot = findBucketForLookupInStorage(oldEntries[i].key, newEntries, newCapacity);
+                Entry* slot = findKeyOrEmptyInStorage(oldEntries[i].key, newEntries, newCapacity);
                 ASSERT(isEmptyEntry(*slot));
                 new (slot) Entry(WTF::move(oldEntries[i]));
             }
@@ -567,7 +570,7 @@ private:
     }
 
     template<typename K>
-    ALWAYS_INLINE static Entry* findBucketForLookupInStorage(const K& key, Entry* data, unsigned capacity)
+    ALWAYS_INLINE static Entry* findKeyOrEmptyInStorage(const K& key, Entry* data, unsigned capacity)
     {
         ASSERT(isPowerOfTwo(capacity));
 
@@ -587,18 +590,16 @@ private:
         }
     }
 
-    // If the key is not found, return the empty bucket where the search ended. This is for lookup
-    // only. For insertions we want to use the "for insertions" counterpart.
+    // If the key is not found, returns the empty slot where the search ended even if
+    // there were deleted slots along the way.
     template<typename K>
-    Entry* findBucketForLookup(const K& key) const
+    Entry* findKeyOrEmpty(const K& key) const
     {
         ASSERT(!isInline());
-        return findBucketForLookupInStorage(key, m_storage.heapEntries, m_capacity);
+        return findKeyOrEmptyInStorage(key, m_storage.heapEntries, m_capacity);
     }
 
-    // If the key is not found but there was a deleted bucket on the search path, return that
-    // bucket so it gets filled instead.
-    Entry* findBucketForInsertion(const KeyType& key) const
+    Entry* findKeyOrEmptyOrDeleted(const KeyType& key) const
     {
         ASSERT(!isInline());
         ASSERT(isPowerOfTwo(m_capacity));
@@ -639,14 +640,14 @@ WTF_ALLOW_UNSAFE_BUFFER_USAGE_END
 
 class InlineMapAccessForTesting {
 public:
-    template<typename KeyArg, typename ValueArg, typename HashArg, typename KeyTraitsArg, typename MappedTraitsArg, unsigned InlineCapacity>
-    static bool isInline(InlineMap<KeyArg, ValueArg, HashArg, KeyTraitsArg, MappedTraitsArg, InlineCapacity>& map)
+    template<typename KeyArg, typename ValueArg, unsigned InlineCapacity, typename HashArg, typename KeyTraitsArg, typename MappedTraitsArg>
+    static bool isInline(InlineMap<KeyArg, ValueArg, InlineCapacity, HashArg, KeyTraitsArg, MappedTraitsArg>& map)
     {
         return map.isInline();
     }
 
-    template<typename KeyArg, typename ValueArg, typename HashArg, typename KeyTraitsArg, typename MappedTraitsArg, unsigned InlineCapacity>
-    static unsigned capacity(InlineMap<KeyArg, ValueArg, HashArg, KeyTraitsArg, MappedTraitsArg, InlineCapacity>& map)
+    template<typename KeyArg, typename ValueArg, unsigned InlineCapacity, typename HashArg, typename KeyTraitsArg, typename MappedTraitsArg>
+    static unsigned capacity(InlineMap<KeyArg, ValueArg, InlineCapacity, HashArg, KeyTraitsArg, MappedTraitsArg>& map)
     {
         return map.m_capacity;
     }
