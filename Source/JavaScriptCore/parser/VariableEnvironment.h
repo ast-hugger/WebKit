@@ -145,7 +145,7 @@ class VariableEnvironment {
     WTF_MAKE_TZONE_ALLOCATED(VariableEnvironment);
 
 public:
-    static constexpr unsigned inlineMapCapacity = 5;
+    static constexpr unsigned inlineMapCapacity = 7;
 
 private:
     typedef InlineMap<PackedRefPtr<UniquedStringImpl>, VariableEnvironmentEntry, inlineMapCapacity, IdentifierRepHash, HashTraits<RefPtr<UniquedStringImpl>>, VariableEnvironmentEntryHashTraits> Map;

@@ -44,10 +44,9 @@ namespace WTF {
 // happens when the map size exceeds the InlineCapacity template parameter. InlineCapacity
 // does not need to be any special value such as a power of 2.
 //
-// Unchecked key means that inserted keys are only checked for not being empty or deleted
-// values in debug builds. In release builds such insertions would corrupt the map.
-//
-// The class is intended to be a drop-in replacement of UncheckedKeyHashMap.
+// InlineMap is to a large extent compatible with UncheckedKeyHashMap. Inserted keys are
+// only checked for not being empty or deleted values in debug builds. In release builds
+// such insertions would corrupt the map.
 
 template<typename KeyArg, typename ValueArg, unsigned InlineCapacity, typename HashArg = PtrHash<KeyArg>, typename KeyTraitsArg = HashTraits<KeyArg>, typename MappedTraitsArg = HashTraits<ValueArg>>
 class InlineMap {
