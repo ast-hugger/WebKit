@@ -148,7 +148,7 @@ void Global::set(JSGlobalObject* globalObject, JSValue argument)
             if (isRefWithTypeIndex(m_type) && !argument.isNull()) {
                 Wasm::TypeIndex paramIndex = m_type.index;
                 Wasm::TypeIndex argIndex = wasmFunction ? wasmFunction->typeIndex() : wasmWrapperFunction->typeIndex();
-                if (paramIndex != argIndex) {
+                if (paramIndex != argIndex && !isSubtypeIndex(argIndex, paramIndex)) {
                     throwTypeError(globalObject, throwScope, "Argument value did not match the reference type"_s);
                     return;
                 }

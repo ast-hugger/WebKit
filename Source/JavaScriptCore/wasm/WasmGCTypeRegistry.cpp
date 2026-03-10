@@ -176,7 +176,12 @@ Ref<RTT> WasmGCTypeRegistry::createCanonicalRTTForType(const WasmGCType* type)
         break;
     }
 
-    if (type->supertype() && type->supertype()->m_rtt) {
+    if (type->supertype()) {
+        // Ensure the supertype's RTT is created first so the display
+        // hierarchy is correct. Without this, a subtype could get a root
+        // RTT and isSubRTT would always return false.
+        singleton().registerCanonicalRTTForType(type->supertype());
+        RELEASE_ASSERT(type->supertype()->m_rtt);
         auto superRTT = type->supertype()->m_rtt;
         auto result = RTT::tryCreate(kind, *superRTT, isFinalType, fieldCount);
         RELEASE_ASSERT(result);

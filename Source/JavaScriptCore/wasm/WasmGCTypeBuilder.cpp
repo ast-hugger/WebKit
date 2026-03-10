@@ -57,13 +57,32 @@ void WasmGCTypeBuilder::deduplicateAndRegister(
     {
         Locker locker { registry.lock() };
 
-        // Phase 1: Find matches in the registry.
+        // Phase 1a: Find matches in the registry (cross-group deduplication).
         for (size_t i = 0; i < groupTypes.size(); ++i) {
             auto* tentative = groupTypes[i];
             auto* canonical = registry.findType(tentative);
             if (canonical) {
                 replacements.add(tentative, canonical);
                 groupTypes[i] = canonical;
+            }
+        }
+
+        // Phase 1b: Deduplicate within the group. For types not matched in the
+        // registry, check if an earlier type in the same group is structurally
+        // equal. This handles the case where a single large recursion group
+        // contains multiple structurally identical types.
+        {
+            UncheckedKeyHashSet<WasmGCTypeHash> groupSet;
+            for (size_t i = 0; i < groupTypes.size(); ++i) {
+                if (replacements.contains(groupTypes[i]))
+                    continue;
+                auto result = groupSet.add(WasmGCTypeHash { groupTypes[i] });
+                if (!result.isNewEntry) {
+                    // Found a match — an earlier type in the group is structurally equal.
+                    auto* canonical = const_cast<WasmGCType*>(result.iterator->key);
+                    replacements.add(groupTypes[i], canonical);
+                    groupTypes[i] = canonical;
+                }
             }
         }
 

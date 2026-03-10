@@ -34,6 +34,8 @@
 #include "JSWebAssemblyStruct.h"
 #include "WasmCallee.h"
 #include "WasmFormat.h"
+#include "WasmGCType.h"
+#include "WasmGCTypeRegistry.h"
 #include "WasmTypeDefinitionInlines.h"
 #include "WebAssemblyFunctionBase.h"
 #include <wtf/CommaPrinter.h>
@@ -1153,7 +1155,7 @@ bool TypeInformation::isReferenceValueAssignable(JSValue refValue, bool allowNul
 
     RefPtr<const RTT> signatureRTT;
     if (!rtt) {
-        signatureRTT = TypeInformation::getCanonicalRTT(typeIndex);
+        signatureRTT = WasmGCTypeRegistry::singleton().getCanonicalRTT(WasmGCType::fromIndex(typeIndex));
         rtt = signatureRTT.get();
     }
 

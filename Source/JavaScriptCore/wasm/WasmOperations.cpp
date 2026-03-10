@@ -576,7 +576,7 @@ JSC_DEFINE_JIT_OPERATION(operationWasmToJSExitMarshalReturnValues, void, (void* 
                     if (isRefWithTypeIndex(returnType) && !value.isNull()) {
                         Wasm::TypeIndex paramIndex = returnType.index;
                         Wasm::TypeIndex argIndex = wasmFunction ? wasmFunction->typeIndex() : wasmWrapperFunction->typeIndex();
-                        if (paramIndex != argIndex) {
+                        if (paramIndex != argIndex && !Wasm::isSubtypeIndex(argIndex, paramIndex)) {
                             throwVMTypeError(globalObject, scope, "Argument function did not match the reference type"_s);
                             OPERATION_RETURN(scope);
                         }
@@ -663,7 +663,7 @@ JSC_DEFINE_JIT_OPERATION(operationWasmToJSExitMarshalReturnValues, void, (void* 
                     if (Wasm::isRefWithTypeIndex(returnType) && !value.isNull()) {
                         Wasm::TypeIndex paramIndex = returnType.index;
                         Wasm::TypeIndex argIndex = wasmFunction ? wasmFunction->typeIndex() : wasmWrapperFunction->typeIndex();
-                        if (paramIndex != argIndex) {
+                        if (paramIndex != argIndex && !Wasm::isSubtypeIndex(argIndex, paramIndex)) {
                             throwTypeError(globalObject, scope, "Argument value did not match the reference type"_s);
                             OPERATION_RETURN(scope);
                         }
@@ -1328,7 +1328,7 @@ JSC_DEFINE_JIT_OPERATION(operationConvertToFuncref, EncodedJSValue, (JSWebAssemb
     if (isRefWithTypeIndex(resultType) && !value.isNull()) {
         Wasm::TypeIndex paramIndex = resultType.index;
         Wasm::TypeIndex argIndex = wasmFunction ? wasmFunction->typeIndex() : wasmWrapperFunction->typeIndex();
-        if (paramIndex != argIndex)
+        if (paramIndex != argIndex && !Wasm::isSubtypeIndex(argIndex, paramIndex))
             OPERATION_RETURN(scope, throwVMTypeError(globalObject, scope, "Argument value did not match the reference type"_s));
     }
 
@@ -1443,7 +1443,7 @@ JSC_DEFINE_JIT_OPERATION(operationIterateResults, void, (JSWebAssemblyInstance* 
                     if (Wasm::isRefWithTypeIndex(returnType) && !value.isNull()) {
                         Wasm::TypeIndex paramIndex = returnType.index;
                         Wasm::TypeIndex argIndex = wasmFunction ? wasmFunction->typeIndex() : wasmWrapperFunction->typeIndex();
-                        if (paramIndex != argIndex) {
+                        if (paramIndex != argIndex && !Wasm::isSubtypeIndex(argIndex, paramIndex)) {
                             throwTypeError(globalObject, scope, "Argument value did not match the reference type"_s);
                             OPERATION_RETURN(scope);
                         }

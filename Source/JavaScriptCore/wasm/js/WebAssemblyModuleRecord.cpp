@@ -337,7 +337,7 @@ void WebAssemblyModuleRecord::initializeImports(JSGlobalObject* globalObject, JS
                             if (Wasm::isRefWithTypeIndex(declaredGlobalType) && !value.isNull()) {
                                 Wasm::TypeIndex paramIndex = global.type.index;
                                 Wasm::TypeIndex argIndex = wasmFunction ? wasmFunction->typeIndex() : wasmWrapperFunction->typeIndex();
-                                if (paramIndex != argIndex)
+                                if (paramIndex != argIndex && !Wasm::isSubtypeIndex(argIndex, paramIndex))
                                     return exception(createJSWebAssemblyLinkError(globalObject, vm, importFailMessage(import, "imported global"_s, "Argument value did not match the reference type"_s)));
                             }
 
@@ -400,7 +400,7 @@ void WebAssemblyModuleRecord::initializeImports(JSGlobalObject* globalObject, JS
                             if (Wasm::isRefWithTypeIndex(globalType) && !value.isNull()) {
                                 Wasm::TypeIndex paramIndex = global.type.index;
                                 Wasm::TypeIndex argIndex = wasmFunction ? wasmFunction->typeIndex() : wasmWrapperFunction->typeIndex();
-                                if (paramIndex != argIndex)
+                                if (paramIndex != argIndex && !Wasm::isSubtypeIndex(argIndex, paramIndex))
                                     return exception(createJSWebAssemblyLinkError(globalObject, vm, importFailMessage(import, "imported global"_s, "Argument value did not match the reference type"_s)));
                             }
 
@@ -469,7 +469,8 @@ void WebAssemblyModuleRecord::initializeImports(JSGlobalObject* globalObject, JS
             Wasm::TypeIndex expectedTypeIndex = moduleInformation.importExceptionTypeIndices[import.kindIndex];
 
             // FIXME: change this to subtyping if the final exception proposal specifies it.
-            if (expectedTypeIndex != tag->tag().typeIndex())
+            if (expectedTypeIndex != tag->tag().typeIndex()
+                && !Wasm::WasmGCType::structurallyEqual(Wasm::WasmGCType::fromIndex(expectedTypeIndex), Wasm::WasmGCType::fromIndex(tag->tag().typeIndex())))
                 return exception(createJSWebAssemblyLinkError(globalObject, vm, importFailMessage(import, "imported Tag"_s, "signature doesn't match the imported WebAssembly Tag's signature"_s)));
 
             m_instance->setTag(import.kindIndex, tag->tag());
