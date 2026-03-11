@@ -1118,7 +1118,7 @@ public:
 
 private:
     bool m_isEverythingCaptured;
-    CachedInlineMap<CachedRefPtr<CachedUniquedStringImpl, UniquedStringImpl, WTF::PackedPtrTraits<UniquedStringImpl>>, VariableEnvironmentEntry, VariableEnvironment::inlineMapCapacity, IdentifierRepHash, HashTraits<RefPtr<UniquedStringImpl>>, VariableEnvironmentEntryHashTraits> m_map;
+    CachedInlineMap<CachedRefPtr<CachedUniquedStringImpl, UniquedStringImpl, WTF::PackedPtrTraits<UniquedStringImpl>>, VariableEnvironmentEntry, VariableEnvironment::inlineMapCapacity, VariableEnvironmentKeyHash, HashTraits<RefPtr<UniquedStringImpl>>, VariableEnvironmentEntryHashTraits> m_map;
     CachedPtr<CachedVariableEnvironmentRareData> m_rareData;
 };
 

@@ -141,6 +141,11 @@ struct PrivateNameEntryHashTraits : HashTraits<PrivateNameEntry> {
 
 typedef UncheckedKeyHashMap<PackedRefPtr<UniquedStringImpl>, PrivateNameEntry, IdentifierRepHash, HashTraits<RefPtr<UniquedStringImpl>>, PrivateNameEntryHashTraits> PrivateNameEnvironment;
 
+// Like IdentifierRepHash but hashes the pointer address directly instead of
+// loading the pre-computed string hash from StringImpl, avoiding a cache miss.
+struct VariableEnvironmentKeyHash : PtrHash<RefPtr<UniquedStringImpl>> {
+};
+
 class VariableEnvironment {
     WTF_MAKE_TZONE_ALLOCATED(VariableEnvironment);
 
@@ -148,7 +153,7 @@ public:
     static constexpr unsigned inlineMapCapacity = 7;
 
 private:
-    typedef InlineMap<PackedRefPtr<UniquedStringImpl>, VariableEnvironmentEntry, inlineMapCapacity, IdentifierRepHash, HashTraits<RefPtr<UniquedStringImpl>>, VariableEnvironmentEntryHashTraits> Map;
+    typedef InlineMap<PackedRefPtr<UniquedStringImpl>, VariableEnvironmentEntry, inlineMapCapacity, VariableEnvironmentKeyHash, HashTraits<RefPtr<UniquedStringImpl>>, VariableEnvironmentEntryHashTraits> Map;
 
 public:
 
