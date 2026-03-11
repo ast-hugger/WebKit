@@ -41,6 +41,7 @@ namespace TestWebKitAPI {
 
 TEST(WTF_InlineMap, Empty)
 {
+    // A freshly constructed map is empty and all queries return no results.
     InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map;
 
     EXPECT_TRUE(WTF::InlineMapAccessForTesting::isInline(map));
@@ -54,6 +55,7 @@ TEST(WTF_InlineMap, Empty)
 
 TEST(WTF_InlineMap, BasicAddAndFind)
 {
+    // Adding a single entry makes it findable; missing keys return end().
     InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map;
 
     auto result = map.add(1, 100);
@@ -77,6 +79,7 @@ TEST(WTF_InlineMap, BasicAddAndFind)
 
 TEST(WTF_InlineMap, DuplicateAdd)
 {
+    // Adding a key that already exists preserves the original value.
     InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map;
 
     auto result1 = map.add(1, 100);
@@ -91,6 +94,7 @@ TEST(WTF_InlineMap, DuplicateAdd)
 
 TEST(WTF_InlineMap, StorageModeTransitions)
 {
+    // Map transitions from inline to hashed storage when inline capacity is exceeded.
     // Explicitly specify InitialCapacity=3 and InitialHashedCapacity=8
     InlineMap<unsigned, unsigned, 3, IntHash<unsigned>> map;
 
@@ -127,6 +131,7 @@ TEST(WTF_InlineMap, StorageModeTransitions)
 
 TEST(WTF_InlineMap, LinearMode)
 {
+    // Entries within inline capacity are stored inline and are all findable.
     // Explicitly specify InitialCapacity=3 to test linear storage behavior
     InlineMap<unsigned, unsigned, 3, IntHash<unsigned>> map;
 
@@ -152,6 +157,7 @@ TEST(WTF_InlineMap, LinearMode)
 
 TEST(WTF_InlineMap, GrowToHashedMode)
 {
+    // Growing well past inline capacity preserves all entries in hashed mode.
     // Explicitly specify InitialCapacity=3 and InitialHashedCapacity=8
     InlineMap<unsigned, unsigned, 3, IntHash<unsigned>> map;
 
@@ -189,6 +195,7 @@ TEST(WTF_InlineMap, GrowToHashedMode)
 
 TEST(WTF_InlineMap, Iteration)
 {
+    // Range-based for visits every entry exactly once.
     InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map;
 
     for (unsigned i = 1; i <= 10; ++i)
@@ -212,6 +219,7 @@ TEST(WTF_InlineMap, Iteration)
 
 TEST(WTF_InlineMap, IterationAfterGrowth)
 {
+    // Iteration works correctly after the map has grown to hashed mode.
     InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map;
 
     for (unsigned i = 1; i <= 100; ++i)
@@ -232,6 +240,7 @@ TEST(WTF_InlineMap, IterationAfterGrowth)
 
 TEST(WTF_InlineMap, MoveConstruction)
 {
+    // Move constructor transfers all entries and leaves the source empty.
     InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map1;
 
     for (unsigned i = 1; i <= 10; ++i)
@@ -250,6 +259,7 @@ TEST(WTF_InlineMap, MoveConstruction)
 
 TEST(WTF_InlineMap, MoveAssignment)
 {
+    // Move assignment replaces the target's content and leaves the source empty.
     InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map1;
     InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map2;
 
@@ -270,6 +280,7 @@ TEST(WTF_InlineMap, MoveAssignment)
 
 TEST(WTF_InlineMap, CopyConstructionEmpty)
 {
+    // Copy-constructing from an empty map produces another empty map.
     InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map1;
 
     InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map2(map1);
@@ -282,6 +293,7 @@ TEST(WTF_InlineMap, CopyConstructionEmpty)
 
 TEST(WTF_InlineMap, CopyConstructionLinearMode)
 {
+    // Copy-constructing a map in inline mode produces an independent copy.
     InlineMap<unsigned, unsigned, 3, IntHash<unsigned>> map1;
 
     map1.add(1, 10);
@@ -314,6 +326,7 @@ TEST(WTF_InlineMap, CopyConstructionLinearMode)
 
 TEST(WTF_InlineMap, CopyConstructionHashedMode)
 {
+    // Copy-constructing a map in hashed mode produces an independent copy.
     InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map1;
 
     for (unsigned i = 1; i <= 20; ++i)
@@ -347,6 +360,7 @@ TEST(WTF_InlineMap, CopyConstructionHashedMode)
 
 TEST(WTF_InlineMap, CopyAssignment)
 {
+    // Copy assignment replaces the target's content with a copy of the source.
     InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map1;
     InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map2;
 
@@ -373,6 +387,7 @@ TEST(WTF_InlineMap, CopyAssignment)
 
 TEST(WTF_InlineMap, CopyAssignmentToSelf)
 {
+    // Self-assignment is a no-op and preserves the map's content.
     InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map;
 
     for (unsigned i = 1; i <= 10; ++i)
@@ -392,6 +407,7 @@ TEST(WTF_InlineMap, CopyAssignmentToSelf)
 
 TEST(WTF_InlineMap, CopyConstructionWithStrings)
 {
+    // Copy construction works correctly with String key/value types.
     InlineMap<String, String, 5, StringHash> map1;
 
     map1.add("key1"_s, "value1"_s);
@@ -413,6 +429,7 @@ TEST(WTF_InlineMap, CopyConstructionWithStrings)
 
 TEST(WTF_InlineMap, RemoveFromEmpty)
 {
+    // Removing from an empty map returns false.
     InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map;
 
     EXPECT_FALSE(map.remove(1));
@@ -421,6 +438,7 @@ TEST(WTF_InlineMap, RemoveFromEmpty)
 
 TEST(WTF_InlineMap, RemoveLinearMode)
 {
+    // Removing entries in inline mode works and the map can be emptied completely.
     InlineMap<unsigned, unsigned, 3, IntHash<unsigned>> map;
 
     map.add(1, 10);
@@ -456,6 +474,7 @@ TEST(WTF_InlineMap, RemoveLinearMode)
 
 TEST(WTF_InlineMap, RemoveNonexistentLinearMode)
 {
+    // Removing a key not present in inline mode returns false and changes nothing.
     InlineMap<unsigned, unsigned, 3, IntHash<unsigned>> map;
 
     map.add(1, 10);
@@ -470,6 +489,7 @@ TEST(WTF_InlineMap, RemoveNonexistentLinearMode)
 
 TEST(WTF_InlineMap, RemoveHashedMode)
 {
+    // Removing entries in hashed mode leaves the remaining entries intact.
     InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map;
 
     for (unsigned i = 1; i <= 20; ++i)
@@ -503,6 +523,7 @@ TEST(WTF_InlineMap, RemoveHashedMode)
 
 TEST(WTF_InlineMap, RemoveAndReaddHashedMode)
 {
+    // A removed key can be re-added with a different value.
     InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map;
 
     for (unsigned i = 1; i <= 10; ++i)
@@ -523,6 +544,7 @@ TEST(WTF_InlineMap, RemoveAndReaddHashedMode)
 
 TEST(WTF_InlineMap, RemoveAllHashedMode)
 {
+    // Removing all entries one by one leaves the map empty.
     InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map;
 
     for (unsigned i = 1; i <= 10; ++i)
@@ -544,6 +566,7 @@ TEST(WTF_InlineMap, RemoveAllHashedMode)
 
 TEST(WTF_InlineMap, IterationAfterRemove)
 {
+    // Iteration skips removed entries and visits only live ones.
     InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map;
 
     for (unsigned i = 1; i <= 10; ++i)
@@ -573,6 +596,7 @@ TEST(WTF_InlineMap, IterationAfterRemove)
 
 TEST(WTF_InlineMap, RemoveWithStrings)
 {
+    // Remove works correctly with String keys.
     InlineMap<String, unsigned, 5, StringHash> map;
 
     map.add("one"_s, 1);
@@ -591,6 +615,7 @@ TEST(WTF_InlineMap, RemoveWithStrings)
 
 TEST(WTF_InlineMap, GrowAfterRemove)
 {
+    // The hash table can grow correctly after entries have been removed.
     InlineMap<unsigned, unsigned, 3, IntHash<unsigned>> map;
 
     // Fill to trigger hashed mode
@@ -619,6 +644,7 @@ TEST(WTF_InlineMap, GrowAfterRemove)
 
 TEST(WTF_InlineMap, PointerKeys)
 {
+    // Raw pointers work as map keys.
     InlineMap<int*, int, 5> map;
 
     constexpr unsigned arraySize = 50;
@@ -645,6 +671,7 @@ TEST(WTF_InlineMap, PointerKeys)
 
 TEST(WTF_InlineMap, ConstIteration)
 {
+    // Iteration works through a const reference to the map.
     InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map;
 
     for (unsigned i = 1; i <= 10; ++i)
@@ -663,6 +690,7 @@ TEST(WTF_InlineMap, ConstIteration)
 
 TEST(WTF_InlineMap, ConstFind)
 {
+    // find() works through a const reference to the map.
     InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map;
     map.add(1, 100);
 
@@ -678,6 +706,7 @@ TEST(WTF_InlineMap, ConstFind)
 
 TEST(WTF_InlineMap, MoveOnlyValues)
 {
+    // Move-only types work as map values.
     InlineMap<unsigned, MoveOnly, 5, IntHash<unsigned>> map;
 
     for (size_t i = 0; i < 100; ++i) {
@@ -697,6 +726,7 @@ TEST(WTF_InlineMap, MoveOnlyValues)
 
 TEST(WTF_InlineMap, MoveOnlyKeys)
 {
+    // Move-only types work as map keys, including duplicate detection.
     InlineMap<MoveOnly, unsigned, 5, DefaultHash<MoveOnly>> map;
 
     for (size_t i = 0; i < 100; ++i) {
@@ -728,6 +758,7 @@ template<typename T> struct ZeroHash : public IntHash<T> {
 
 TEST(WTF_InlineMap, HashCollisions)
 {
+    // All entries remain accessible even when every key hashes to the same bucket.
     // Use a hash that always returns 0 to force all entries into the same bucket
     InlineMap<unsigned, unsigned, 5, ZeroHash<unsigned>> map;
 
@@ -753,6 +784,7 @@ TEST(WTF_InlineMap, HashCollisions)
 
 TEST(WTF_InlineMap, IteratorComparison)
 {
+    // Iterator == and \!= operators work correctly, including const conversions.
     InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map;
     map.add(1, 100);
 
@@ -816,6 +848,7 @@ unsigned DestructorCounter::destructorCount = 0;
 
 TEST(WTF_InlineMap, DestructorCalledOnClear)
 {
+    // Value destructors are called when the map is destroyed (inline mode).
     DestructorCounter::TestingScope scope;
 
     {
@@ -834,6 +867,7 @@ TEST(WTF_InlineMap, DestructorCalledOnClear)
 
 TEST(WTF_InlineMap, DestructorCalledOnClearAfterGrowth)
 {
+    // Value destructors are called for all live entries after growth (hashed mode).
     DestructorCounter::TestingScope scope;
     unsigned countBeforeDestruction = 0;
 
@@ -856,6 +890,7 @@ TEST(WTF_InlineMap, DestructorCalledOnClearAfterGrowth)
 
 TEST(WTF_InlineMap, StringKeys)
 {
+    // String objects work as map keys.
     InlineMap<String, unsigned, 5, StringHash> map;
 
     map.add("one"_s, 1);
@@ -875,6 +910,7 @@ TEST(WTF_InlineMap, StringKeys)
 
 TEST(WTF_InlineMap, StringValues)
 {
+    // String objects work as map values.
     InlineMap<unsigned, String, 5, IntHash<unsigned>> map;
 
     map.add(1, "one"_s);
@@ -889,6 +925,7 @@ TEST(WTF_InlineMap, StringValues)
 
 TEST(WTF_InlineMap, StringKeysAndValues)
 {
+    // String-to-String map works, and duplicate add preserves the original value.
     InlineMap<String, String, 5, StringHash> map;
 
     map.add("key1"_s, "value1"_s);
@@ -908,6 +945,7 @@ TEST(WTF_InlineMap, StringKeysAndValues)
 
 TEST(WTF_InlineMap, StringKeysGrowth)
 {
+    // String keys survive growth from inline to hashed mode.
     InlineMap<String, unsigned, 5, StringHash> map;
 
     // Add enough entries to trigger growth to hashed mode
@@ -930,6 +968,7 @@ TEST(WTF_InlineMap, StringKeysGrowth)
 
 TEST(WTF_InlineMap, RefPtrKeys)
 {
+    // RefPtr objects work as map keys, looked up by raw pointer.
     DerivedRefLogger a("a");
     DerivedRefLogger b("b");
     DerivedRefLogger c("c");
@@ -952,6 +991,7 @@ TEST(WTF_InlineMap, RefPtrKeys)
 
 TEST(WTF_InlineMap, RefPtrValues)
 {
+    // RefPtr objects work as map values.
     DerivedRefLogger a("a");
     DerivedRefLogger b("b");
 
@@ -967,6 +1007,7 @@ TEST(WTF_InlineMap, RefPtrValues)
 
 TEST(WTF_InlineMap, RefKeys)
 {
+    // Ref objects work as map keys and are properly deref'd on destruction.
     RefLogger a("a");
 
     {
@@ -993,6 +1034,7 @@ TEST(WTF_InlineMap, RefKeys)
 
 TEST(WTF_InlineMap, RefValues)
 {
+    // Ref objects work as map values and are properly deref'd on destruction.
     RefLogger a("a");
 
     {
@@ -1010,6 +1052,7 @@ TEST(WTF_InlineMap, RefValues)
 
 TEST(WTF_InlineMap, RefKeysGrowth)
 {
+    // Ref keys work correctly through growth transitions.
     // Test that Ref keys work correctly through growth transitions
     Vector<Ref<RefLogger>> loggers;
     for (int i = 0; i < 50; ++i)
@@ -1039,6 +1082,7 @@ TEST(WTF_InlineMap, RefKeysGrowth)
 
 TEST(WTF_InlineMap, ClearEmpty)
 {
+    // Clearing an already-empty map is a no-op.
     InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map;
 
     map.clear();
@@ -1049,6 +1093,7 @@ TEST(WTF_InlineMap, ClearEmpty)
 
 TEST(WTF_InlineMap, ClearLinearMode)
 {
+    // Clearing in inline mode removes entries but preserves inline storage.
     InlineMap<unsigned, unsigned, 3, IntHash<unsigned>> map;
 
     map.add(1, 10);
@@ -1073,6 +1118,7 @@ TEST(WTF_InlineMap, ClearLinearMode)
 
 TEST(WTF_InlineMap, ClearHashedMode)
 {
+    // Clearing in hashed mode removes entries but preserves hashed storage.
     InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map;
 
     for (unsigned i = 1; i <= 20; ++i)
@@ -1100,6 +1146,7 @@ TEST(WTF_InlineMap, ClearHashedMode)
 
 TEST(WTF_InlineMap, ClearWithStrings)
 {
+    // Clearing works correctly with String key/value types.
     InlineMap<String, String, 5, StringHash> map;
 
     map.add("key1"_s, "value1"_s);
@@ -1116,6 +1163,7 @@ TEST(WTF_InlineMap, ClearWithStrings)
 
 TEST(WTF_InlineMap, ReserveInitialCapacityZero)
 {
+    // Reserving zero capacity keeps the map in inline mode.
     InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map;
 
     map.reserveInitialCapacity(0);
@@ -1126,6 +1174,7 @@ TEST(WTF_InlineMap, ReserveInitialCapacityZero)
 
 TEST(WTF_InlineMap, ReserveInitialCapacityLinear)
 {
+    // Reserving within inline capacity keeps inline storage.
     InlineMap<unsigned, unsigned, 3, IntHash<unsigned>> map;
 
     map.reserveInitialCapacity(2);
@@ -1144,6 +1193,7 @@ TEST(WTF_InlineMap, ReserveInitialCapacityLinear)
 
 TEST(WTF_InlineMap, ReserveInitialCapacityHashed)
 {
+    // Reserving beyond inline capacity switches directly to hashed storage.
     InlineMap<unsigned, unsigned, 3, IntHash<unsigned>> map;
 
     map.reserveInitialCapacity(10);
@@ -1165,6 +1215,7 @@ TEST(WTF_InlineMap, ReserveInitialCapacityHashed)
 
 TEST(WTF_InlineMap, ReserveInitialCapacityLarge)
 {
+    // Reserving a large capacity pre-allocates hashed storage for many entries.
     InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map;
 
     map.reserveInitialCapacity(100);
@@ -1183,6 +1234,7 @@ TEST(WTF_InlineMap, ReserveInitialCapacityLarge)
 
 TEST(WTF_InlineMap, ValuesIteration)
 {
+    // The values() range visits every value exactly once.
     InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map;
 
     for (unsigned i = 1; i <= 10; ++i)
@@ -1202,6 +1254,7 @@ TEST(WTF_InlineMap, ValuesIteration)
 
 TEST(WTF_InlineMap, ValuesIterationModify)
 {
+    // Values can be modified in-place through the values() iterator.
     InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map;
 
     for (unsigned i = 1; i <= 5; ++i)
@@ -1218,6 +1271,7 @@ TEST(WTF_InlineMap, ValuesIterationModify)
 
 TEST(WTF_InlineMap, ValuesIterationEmpty)
 {
+    // The values() range on an empty map produces zero iterations.
     InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map;
 
     unsigned count = 0;
@@ -1231,6 +1285,7 @@ TEST(WTF_InlineMap, ValuesIterationEmpty)
 
 TEST(WTF_InlineMap, ValuesIterationConst)
 {
+    // The values() range works through a const reference.
     InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map;
 
     for (unsigned i = 1; i <= 5; ++i)
@@ -1246,6 +1301,7 @@ TEST(WTF_InlineMap, ValuesIterationConst)
 
 TEST(WTF_InlineMap, SwapBothEmpty)
 {
+    // Swapping two empty maps is a no-op.
     InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map1;
     InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map2;
 
@@ -1257,6 +1313,7 @@ TEST(WTF_InlineMap, SwapBothEmpty)
 
 TEST(WTF_InlineMap, SwapOneEmpty)
 {
+    // Swapping a populated map with an empty one exchanges their contents.
     InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map1;
     InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map2;
 
@@ -1278,6 +1335,7 @@ TEST(WTF_InlineMap, SwapOneEmpty)
 
 TEST(WTF_InlineMap, SwapBothPopulated)
 {
+    // Swapping two populated maps exchanges their contents.
     InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map1;
     InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map2;
 
@@ -1312,6 +1370,7 @@ TEST(WTF_InlineMap, SwapBothPopulated)
 
 TEST(WTF_InlineMap, SwapWithStrings)
 {
+    // Swap works correctly with String key/value types.
     InlineMap<String, String, 5, StringHash> map1;
     InlineMap<String, String, 5, StringHash> map2;
 
@@ -1336,6 +1395,7 @@ TEST(WTF_InlineMap, SwapWithStrings)
 
 TEST(WTF_InlineMap, PackedRefPtrKeysBasic)
 {
+    // PackedRefPtr<StringImpl> keys work for basic add/find/contains.
     Vector<String> strings;
     strings.append("alpha"_s);
     strings.append("beta"_s);
@@ -1363,6 +1423,7 @@ TEST(WTF_InlineMap, PackedRefPtrKeysBasic)
 
 TEST(WTF_InlineMap, PackedRefPtrKeysGrowth)
 {
+    // PackedRefPtr keys survive growth from inline to hashed mode.
     constexpr unsigned count = 50;
     Vector<String> strings;
     for (unsigned i = 0; i < count; ++i)
@@ -1390,6 +1451,7 @@ TEST(WTF_InlineMap, PackedRefPtrKeysGrowth)
 
 TEST(WTF_InlineMap, PackedRefPtrKeysRemoveAndReinsert)
 {
+    // PackedRefPtr keys can be removed and re-inserted with new values.
     constexpr unsigned count = 20;
     Vector<String> strings;
     for (unsigned i = 0; i < count; ++i)
@@ -1432,6 +1494,7 @@ TEST(WTF_InlineMap, PackedRefPtrKeysRemoveAndReinsert)
 
 TEST(WTF_InlineMap, PackedRefPtrKeysCopy)
 {
+    // Copying a map with PackedRefPtr keys produces an independent copy.
     constexpr unsigned count = 20;
     Vector<String> strings;
     for (unsigned i = 0; i < count; ++i)
@@ -1466,6 +1529,7 @@ TEST(WTF_InlineMap, PackedRefPtrKeysCopy)
 
 TEST(WTF_InlineMap, StressInsertions)
 {
+    // Inserting 1000 entries works and all are retrievable.
     InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map;
 
     for (unsigned i = 1; i <= 1000; ++i) {
@@ -1488,6 +1552,7 @@ TEST(WTF_InlineMap, StressInsertions)
 
 TEST(WTF_InlineMap, StressInsertRemoveReinsert)
 {
+    // Bulk remove of odd keys and re-insert with new values preserves integrity.
     InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map;
 
     // Add 200 entries
@@ -1529,6 +1594,7 @@ TEST(WTF_InlineMap, StressInsertRemoveReinsert)
 
 TEST(WTF_InlineMap, StressRemoveAll)
 {
+    // Removing all 500 entries then re-adding them works correctly.
     InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map;
 
     // Add 500 entries
@@ -1563,6 +1629,7 @@ TEST(WTF_InlineMap, StressRemoveAll)
 
 TEST(WTF_InlineMap, DuplicateAddHashedMode)
 {
+    // Duplicate adds in hashed mode preserve original values.
     InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map;
 
     for (unsigned i = 1; i <= 20; ++i)
@@ -1583,6 +1650,7 @@ TEST(WTF_InlineMap, DuplicateAddHashedMode)
 
 TEST(WTF_InlineMap, IterationInlineMode)
 {
+    // Iteration visits all entries while still in inline mode.
     InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map;
 
     for (unsigned i = 1; i <= 3; ++i)
@@ -1607,6 +1675,7 @@ TEST(WTF_InlineMap, IterationInlineMode)
 
 TEST(WTF_InlineMap, MoveConstructionInlineMode)
 {
+    // Move construction in inline mode transfers entries and preserves inline storage.
     InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map1;
 
     for (unsigned i = 1; i <= 3; ++i)
@@ -1629,6 +1698,7 @@ TEST(WTF_InlineMap, MoveConstructionInlineMode)
 
 TEST(WTF_InlineMap, MoveConstructionHashedMode)
 {
+    // Move construction in hashed mode steals the heap pointer.
     InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map1;
 
     for (unsigned i = 1; i <= 20; ++i)
@@ -1651,6 +1721,7 @@ TEST(WTF_InlineMap, MoveConstructionHashedMode)
 
 TEST(WTF_InlineMap, MoveAssignmentInlineToInline)
 {
+    // Move assignment between two inline maps works correctly.
     InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map1;
     InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map2;
 
@@ -1676,6 +1747,7 @@ TEST(WTF_InlineMap, MoveAssignmentInlineToInline)
 
 TEST(WTF_InlineMap, SwapInlineAndHashed)
 {
+    // Swapping an inline map with a hashed map exchanges both content and storage mode.
     InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> inlineMap;
     InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> hashedMap;
 
@@ -1711,6 +1783,7 @@ TEST(WTF_InlineMap, SwapInlineAndHashed)
 
 TEST(WTF_InlineMap, ClearThenGrow)
 {
+    // A cleared map can grow beyond its original capacity.
     InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map;
 
     for (unsigned i = 1; i <= 20; ++i)
@@ -1739,6 +1812,7 @@ TEST(WTF_InlineMap, ClearThenGrow)
 
 TEST(WTF_InlineMap, CopyWithDeletedEntries)
 {
+    // Copying a map with deleted tombstones produces a clean copy without them.
     InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map1;
 
     for (unsigned i = 1; i <= 20; ++i)
@@ -1777,6 +1851,7 @@ TEST(WTF_InlineMap, CopyWithDeletedEntries)
 
 TEST(WTF_InlineMap, RemoveLastInlineEntry)
 {
+    // Removing the sole inline entry leaves the map empty and still usable.
     InlineMap<unsigned, unsigned, 5, IntHash<unsigned>> map;
 
     map.add(42, 420);

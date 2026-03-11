@@ -91,14 +91,16 @@ WTF_ALLOW_UNSAFE_BUFFER_USAGE_BEGIN
             return;
         }
 
-        m_storage.heapEntries = static_cast<Entry*>(FastMalloc::malloc(allocationSizeForCapacity(m_capacity)));
+        m_storage.heapEntries = allocateAndInitializeStorage(m_capacity);
         Entry* srcEntries = other.m_storage.heapEntries;
         Entry* destEntries = m_storage.heapEntries;
 
         for (unsigned i = 0; i < m_capacity; ++i) {
             if (isEmptyEntry(srcEntries[i]))
-                constructEmptyEntry(destEntries[i]);
-            else if (isDeletedEntry(srcEntries[i]))
+                continue;
+            if constexpr (!EntryTraits::emptyValueIsZero)
+                std::destroy_at(&destEntries[i]);
+            if (isDeletedEntry(srcEntries[i]))
                 constructDeletedEntry(destEntries[i]);
             else
                 new (&destEntries[i]) Entry(srcEntries[i]);
@@ -117,8 +119,8 @@ WTF_ALLOW_UNSAFE_BUFFER_USAGE_BEGIN
     InlineMap& operator=(const InlineMap& other)
     {
         if (this != &other) {
-            std::destroy_at(this);
-            new (this) InlineMap(other);
+            InlineMap temp(other);
+            swap(temp);
         }
         return *this;
     }
@@ -386,7 +388,13 @@ WTF_ALLOW_UNSAFE_BUFFER_USAGE_BEGIN
             std::destroy_n(entryStorage, m_size);
         else {
             for (unsigned i = 0; i < m_capacity; ++i) {
-                if (!isEmptyOrDeletedEntry(entryStorage[i]))
+                if (isEmptyEntry(entryStorage[i]))
+                    continue;
+                if constexpr (EntryTraits::emptyValueIsZero) {
+                    // If emptyValueIsZero, deleted entries don't have live values and shouldn't be destroyed
+                    if (!isDeletedEntry(entryStorage[i]))
+                        std::destroy_at(&entryStorage[i]);
+                } else
                     std::destroy_at(&entryStorage[i]);
                 constructEmptyEntry(entryStorage[i]);
             }
@@ -406,18 +414,12 @@ WTF_ALLOW_UNSAFE_BUFFER_USAGE_BEGIN
     {
         RELEASE_ASSERT(m_size == 0 && m_capacity == InlineCapacity); // expecting a brand new map
 
-        if (keyCount <= InlineCapacity) {
-            // Already have inline storage
+        if (keyCount <= InlineCapacity)
             return;
-        }
 
-        unsigned capacity = roundUpToPowerOfTwo(2 * keyCount * loadFactorDenominator / loadFactorNumerator);
+        unsigned capacity = roundUpToPowerOfTwo(keyCount * loadFactorDenominator / loadFactorNumerator + 1);
         m_capacity = capacity;
-        m_storage.heapEntries = static_cast<Entry*>(FastMalloc::malloc(allocationSizeForCapacity(capacity)));
-
-        Entry* entryStorage = m_storage.heapEntries;
-        for (unsigned i = 0; i < capacity; ++i)
-            constructEmptyEntry(entryStorage[i]);
+        m_storage.heapEntries = allocateAndInitializeStorage(capacity);
     }
 
 private:
@@ -468,7 +470,7 @@ private:
 
     ALWAYS_INLINE static bool isEmptyKey(const KeyType& key)
     {
-        return isHashTraitsEmptyValue<HashTraits<KeyType>>(key);
+        return isHashTraitsEmptyValue<KeyTraits>(key);
     }
 
     ALWAYS_INLINE static bool isEmptyEntry(const Entry& entry)
@@ -478,7 +480,7 @@ private:
 
     ALWAYS_INLINE static bool isDeletedEntry(const Entry& entry)
     {
-        return HashTraits<KeyType>::isDeletedValue(entry.key);
+        return KeyTraits::isDeletedValue(entry.key);
     }
 
     ALWAYS_INLINE static bool isEmptyOrDeletedEntry(const Entry& entry)
@@ -514,58 +516,50 @@ private:
     static constexpr unsigned loadFactorNumerator = 3;
     static constexpr unsigned loadFactorDenominator = 4;
 
-    void transitionToHashed()
+    ALWAYS_INLINE static Entry* allocateAndInitializeStorage(unsigned capacity)
     {
-        ASSERT(isInline());
-        unsigned oldSize = m_size;
-        Entry* oldEntries = inlineStorage();
+        if constexpr (EntryTraits::emptyValueIsZero)
+            return static_cast<Entry*>(FastMalloc::zeroedMalloc(allocationSizeForCapacity(capacity)));
 
-        // New capacity should allow having twice as many entries before hitting the load factor.
-        unsigned newCapacity = roundUpToPowerOfTwo(oldSize * 2 * loadFactorDenominator / loadFactorNumerator);
-        Entry* newEntries = static_cast<Entry*>(FastMalloc::malloc(allocationSizeForCapacity(newCapacity)));
-
-        // Initialize new buffer with empty entries
-        for (unsigned i = 0; i < newCapacity; ++i)
-            constructEmptyEntry(newEntries[i]);
-
-        // Move old entries directly into new buffer
-        for (unsigned i = 0; i < oldSize; ++i) {
-            Entry* slot = findKeyOrEmptyInStorage(oldEntries[i].key, newEntries, newCapacity);
-            ASSERT(isEmptyEntry(*slot));
-            new (slot) Entry(WTF::move(oldEntries[i]));
-        }
-        // Assuming the moved-from entries in the old storage are trivially destructible
-
-        m_capacity = newCapacity;
-        m_storage.heapEntries = newEntries;
+        Entry* storage = static_cast<Entry*>(FastMalloc::malloc(allocationSizeForCapacity(capacity)));
+        for (unsigned i = 0; i < capacity; ++i)
+            constructEmptyEntry(storage[i]);
+        return storage;
     }
 
-    void grow()
+    ALWAYS_INLINE void rehashTo(unsigned newCapacity)
     {
-        ASSERT(!isInline());
-        unsigned oldCapacity = m_capacity;
-        Entry* oldEntries = m_storage.heapEntries;
+        bool wasInline = isInline();
+        unsigned oldIterCount = wasInline ? m_size : m_capacity;
+        Entry* oldEntries = entries();
 
-        unsigned newCapacity = oldCapacity * 2;
-        Entry* newEntries = static_cast<Entry*>(FastMalloc::malloc(allocationSizeForCapacity(newCapacity)));
+        Entry* newEntries = allocateAndInitializeStorage(newCapacity);
 
-        // Initialize new buffer with empty entries
-        for (unsigned i = 0; i < newCapacity; ++i)
-            constructEmptyEntry(newEntries[i]);
-
-        // Rehash old entries into new buffer
-        for (unsigned i = 0; i < oldCapacity; ++i) {
-            if (!isEmptyOrDeletedEntry(oldEntries[i])) {
+        for (unsigned i = 0; i < oldIterCount; ++i) {
+            if (wasInline || !isEmptyOrDeletedEntry(oldEntries[i])) {
                 Entry* slot = findKeyOrEmptyInStorage(oldEntries[i].key, newEntries, newCapacity);
                 ASSERT(isEmptyEntry(*slot));
                 new (slot) Entry(WTF::move(oldEntries[i]));
             }
         }
 
+        Entry* toFree = wasInline ? nullptr : oldEntries;
         m_capacity = newCapacity;
         m_storage.heapEntries = newEntries;
-        // We assume the moved-from entries in the old storage don't need destruction
-        FastMalloc::free(oldEntries);
+        if (toFree)
+            FastMalloc::free(toFree);
+    }
+
+    void transitionToHashed()
+    {
+        ASSERT(isInline());
+        rehashTo(roundUpToPowerOfTwo(m_size * 2 * loadFactorDenominator / loadFactorNumerator));
+    }
+
+    void grow()
+    {
+        ASSERT(!isInline());
+        rehashTo(m_capacity * 2);
     }
 
     template<typename K>
