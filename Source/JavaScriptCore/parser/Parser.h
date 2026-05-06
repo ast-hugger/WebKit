@@ -2184,6 +2184,7 @@ private:
     DebuggerParseData* m_debuggerParseData;
     EagerIIFEParseState* m_iifeParseState { nullptr };
     RefPtr<EagerIIFERegistry> m_eagerIIFERegistry;
+    bool m_nextFunctionIsLikelyIIFE { false };
     bool m_seenTaggedTemplateInNonReparsingFunctionMode { false };
     bool m_seenPrivateNameUseInNonReparsingFunctionMode { false };
     bool m_seenArgumentsDotLength { false };

@@ -5160,7 +5160,8 @@ template <typename LexerType>
 template <class TreeBuilder> TreeExpression Parser<LexerType>::parseFunctionExpression(TreeBuilder& context)
 {
     ASSERT(match(FUNCTION));
-    bool isLikelyIIFE = m_lastTokenType == OPENPAREN || m_lastTokenType == EXCLAMATION;
+    bool isLikelyIIFE = m_nextFunctionIsLikelyIIFE || m_lastTokenType == EXCLAMATION;
+    m_nextFunctionIsLikelyIIFE = false;
     SetForScope nonLHSCountScope(m_parserState.nonLHSCount);
     JSTokenLocation location(tokenLocation());
     unsigned functionStart = tokenStart();
@@ -5326,6 +5327,8 @@ template <class TreeBuilder> TreeExpression Parser<LexerType>::parsePrimaryExpre
         return parseArrayLiteral(context);
     case OPENPAREN: {
         next();
+        if (match(FUNCTION))
+            m_nextFunctionIsLikelyIIFE = true;
         SetForScope nonLHSCountScope(m_parserState.nonLHSCount);
         TreeExpression result = parseExpression(context);
         handleProductionOrFail(CLOSEPAREN, ")", "end", "compound expression");
