@@ -1166,9 +1166,11 @@ private:
     // A specialized parser state activated in parseFunctionInfo() to parse a likely IIFE.
     // See also EagerIIFEParseScope in Parser.cpp.
     //
-    // The parse state provides methods to parse the function's parameters and body using
-    // an ASTBuilder instead of a SyntaxChecker, collecting the resulting FunctionParameters
-    // and SourceElements.
+    // The parse state redirects the parser's current arena so that objects created while
+    // the parse state is installed are created in the scope's arena instead of the main
+    // arena of the parser. It also provides methods to parse the function's parameters
+    // and body using an ASTBuilder instead of a SyntaxChecker, collecting the resulting
+    // FunctionParameters and SourceElements.
     //
     // Because IIFE parameters and body may themselves contain nested function definitions
     // (including nested IIFEs), the IIFE parse state marks itself as isInUse while
@@ -1178,17 +1180,20 @@ private:
 
     class EagerIIFEParseState {
     public:
-        EagerIIFEParseState(Parser& parser, ASTBuilder* builder, unsigned startOffset)
+        EagerIIFEParseState(Parser& parser, ASTBuilder* builder, ParserArena& arena, unsigned startOffset)
             : m_parser(parser)
             , m_builder(builder)
             , m_startOffset(startOffset)
+            , m_savedArena(parser.m_currentArena)
             , m_savedIIFEParseState(parser.m_iifeParseState)
         {
+            parser.setCurrentArena(arena);
             parser.m_iifeParseState = this;
         }
 
         ~EagerIIFEParseState()
         {
+            m_parser.setCurrentArena(*m_savedArena);
             m_parser.m_iifeParseState = m_savedIIFEParseState;
         }
 
@@ -1224,6 +1229,7 @@ private:
         bool m_isInUse { false };
         unsigned m_startOffset;
 
+        ParserArena* m_savedArena;
         EagerIIFEParseState* m_savedIIFEParseState;
 
         FunctionParameters* m_functionParameters { nullptr };
@@ -2148,6 +2154,11 @@ private:
         m_errorMessage = String();
     }
 
+    ALWAYS_INLINE void setCurrentArena(ParserArena& arena) {
+        m_currentArena = &arena;
+        m_lexer->setIdentifierArena(&arena.identifierArena());
+    }
+
     // Hotter fields first
     VM& m_vm;
     Scope* m_currentScope { nullptr };
@@ -2175,7 +2186,8 @@ private:
     bool m_isInsideOrdinaryFunction;
     bool m_insideSwitchCaseBody { false };
 
-    Ref<ParserArena> m_parserArena;
+    ParserArena m_parserArena;
+    ParserArena* m_currentArena { nullptr };
     CallOrApplyDepthScope* m_callOrApplyDepthScope { nullptr };
     ScopeStack m_scopeStack;
     bool m_hasStackOverflow;
@@ -2237,7 +2249,7 @@ std::unique_ptr<ParsedNode> Parser<LexerType>::parse(ParserError& error, const I
         endLocation.lineStartOffset = m_lexer->currentLineStartOffset();
         endLocation.startOffset = m_lexer->currentOffset();
         unsigned endColumn = endLocation.startOffset - endLocation.lineStartOffset;
-        result = makeUnique<ParsedNode>(m_parserArena.copyRef(),
+        result = makeUnique<ParsedNode>(m_parserArena,
                                     startLocation,
                                     endLocation,
                                     startColumn,
