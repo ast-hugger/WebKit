@@ -25,13 +25,13 @@
 
 namespace JSC {
 
-    inline void* ParserArenaFreeable::operator new(size_t size, ParserArena& parserArena)
+    inline void* ParserArenaFreeable::operator new(size_t size, ParserNodeArena& parserArena)
     {
         return parserArena.allocateFreeable(size);
     }
 
     template<typename T>
-    inline void* ParserArenaDeletable::operator new(size_t size, ParserArena& parserArena)
+    inline void* ParserArenaDeletable::operator new(size_t size, ParserNodeArena& parserArena)
     {
         return parserArena.allocateDeletable<T>(size);
     }
@@ -39,6 +39,11 @@ namespace JSC {
     inline ParserArenaRoot::ParserArenaRoot(ParserArena& parserArena)
     {
         m_arena.swap(parserArena);
+    }
+
+    inline ParserArenaRoot::ParserArenaRoot(ParserNodeArena& nodeArena)
+    {
+        static_cast<ParserNodeArena&>(m_arena).swap(nodeArena);
     }
 
     inline Node::Node(const JSTokenLocation& location)

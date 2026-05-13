@@ -95,9 +95,10 @@ WTF_MAKE_TZONE_ALLOCATED_IMPL(ModuleScopeData);
 //
 // EagerIIFEParseScope and EagerIIFEParseState work together to enable this optimization.
 // EagerIIFEParseScope is created as a local in parseFunctionInfo when an IIFE candidate
-// is detected. It owns a separate ParserArena and ASTBuilder, and constructs an
+// is detected. It owns a separate ParserNodeArena and ASTBuilder, and constructs an
 // EagerIIFEParseState that installs itself into the parser, redirecting the parser's
-// current arena. The FunctionNode created for the IIFE takes ownership of the scope's
+// current arena for AST node allocation. Identifiers are always allocated in the parser's
+// main arena. The FunctionNode created for the IIFE takes ownership of the scope's
 // arena contents via swap.
 
 template<typename LexerType>
@@ -110,7 +111,7 @@ public:
     { }
 
 private:
-    ParserArena m_arena;
+    ParserNodeArena m_arena;
     ASTBuilder m_builder;
     Parser<LexerType>::EagerIIFEParseState m_parseState;
 };
@@ -175,7 +176,7 @@ Parser<LexerType>::Parser(VM& vm, const SourceCode& source, ImplementationVisibi
 {
     m_lexer = makeUnique<LexerType>(vm, builtinMode, scriptMode);
     m_lexer->setCode(source, &m_parserArena);
-    setCurrentArena(m_parserArena);
+    m_currentArena = &m_parserArena;
     m_token.m_startPosition.line = source.firstLine().oneBasedInt();
     m_token.m_startPosition.offset = source.startOffset();
     m_token.m_startPosition.lineStartOffset = source.startOffset();
@@ -1429,14 +1430,14 @@ template <class TreeBuilder> TreeDestructuringPattern Parser<LexerType>::parseDe
                 switch (m_token.m_type) {
                 case DOUBLE:
                 case INTEGER:
-                    propertyName = &m_currentArena->identifierArena().makeNumericIdentifier(const_cast<VM&>(m_vm), m_token.m_data.doubleValue);
+                    propertyName = &m_parserArena.identifierArena().makeNumericIdentifier(const_cast<VM&>(m_vm), m_token.m_data.doubleValue);
                     break;
                 case STRING:
                     propertyName = m_token.m_data.ident;
                     wasString = true;
                     break;
                 case BIGINT:
-                    propertyName = m_currentArena->identifierArena().makeBigIntDecimalIdentifier(const_cast<VM&>(m_vm), *m_token.m_data.bigIntString, m_token.m_data.radix);
+                    propertyName = m_parserArena.identifierArena().makeBigIntDecimalIdentifier(const_cast<VM&>(m_vm), *m_token.m_data.bigIntString, m_token.m_data.radix);
                     failIfFalse(propertyName, "Cannot parse big int property name");
                     break;
                 case OPENBRACKET:
@@ -3051,6 +3052,7 @@ template <class TreeBuilder> bool Parser<LexerType>::parseFunctionInfo(TreeBuild
             functionInfo.name ? *functionInfo.name : m_vm.propertyNames->nullIdentifier,
             FunctionMode::FunctionExpression);
 
+        m_parserArena.leakIdentifierArena();
         m_eagerIIFERegistry->add(functionInfo.startOffset, WTF::move(functionNode));
     }
     
@@ -3356,7 +3358,7 @@ parseMethod:
             next();
             break;
         case BIGINT:
-            ident = m_currentArena->identifierArena().makeBigIntDecimalIdentifier(const_cast<VM&>(m_vm), *m_token.m_data.bigIntString, m_token.m_data.radix);
+            ident = m_parserArena.identifierArena().makeBigIntDecimalIdentifier(const_cast<VM&>(m_vm), *m_token.m_data.bigIntString, m_token.m_data.radix);
             failIfFalse(ident, "Cannot parse big int property name");
             next();
             break;
@@ -3391,7 +3393,7 @@ parseMethod:
         }
         case DOUBLE:
         case INTEGER:
-            ident = &m_currentArena->identifierArena().makeNumericIdentifier(const_cast<VM&>(m_vm), m_token.m_data.doubleValue);
+            ident = &m_parserArena.identifierArena().makeNumericIdentifier(const_cast<VM&>(m_vm), m_token.m_data.doubleValue);
             ASSERT(ident);
             next();
             break;
@@ -3472,9 +3474,9 @@ parseMethod:
 
             if (computedPropertyName) {
                 if (tag == ClassElementTag::Instance)
-                    ident = &m_currentArena->identifierArena().makePrivateIdentifier(m_vm, instanceComputedNamePrefix, nextInstanceComputedFieldID++);
+                    ident = &m_parserArena.identifierArena().makePrivateIdentifier(m_vm, instanceComputedNamePrefix, nextInstanceComputedFieldID++);
                 else
-                    ident = &m_currentArena->identifierArena().makePrivateIdentifier(m_vm, staticComputedNamePrefix, nextStaticComputedFieldID++);
+                    ident = &m_parserArena.identifierArena().makePrivateIdentifier(m_vm, staticComputedNamePrefix, nextStaticComputedFieldID++);
                 DeclarationResultMask declarationResult = classScope->declareLexicalVariable(ident, true);
                 ASSERT_UNUSED(declarationResult, declarationResult == DeclarationResult::Valid);
                 classScope->useVariable(ident, false);
@@ -3507,7 +3509,7 @@ parseMethod:
             m_statementDepth = 0;
             failIfFalse(parseBlockStatement(context, BlockType::StaticBlock), "Cannot parse class static block");
             auto* symbolImpl = std::bit_cast<SymbolImpl*>(m_vm.propertyNames->builtinNames().staticInitializerBlockPrivateName().impl());
-            ident = &m_currentArena->identifierArena().makeIdentifier(const_cast<VM&>(m_vm), symbolImpl);
+            ident = &m_parserArena.identifierArena().makeIdentifier(const_cast<VM&>(m_vm), symbolImpl);
             property = context.createProperty(ident, type, SuperBinding::Needed, tag);
             classScope->markLastUsedVariablesSetAsCaptured(usedVariablesSize);
         } else {
@@ -4868,7 +4870,7 @@ namedProperty:
     case DOUBLE:
     case INTEGER: {
         unsigned functionStart = timesPosition.value_or(asyncPosition.value_or(m_token.m_startPosition));
-        const Identifier& ident = m_currentArena->identifierArena().makeNumericIdentifier(const_cast<VM&>(m_vm), m_token.m_data.doubleValue);
+        const Identifier& ident = m_parserArena.identifierArena().makeNumericIdentifier(const_cast<VM&>(m_vm), m_token.m_data.doubleValue);
         next();
 
         if (match(OPENPAREN)) {
@@ -4886,7 +4888,7 @@ namedProperty:
         return context.createProperty(&ident, node, PropertyNode::Constant, SuperBinding::NotNeeded, InferName::Allowed, ClassElementTag::No);
     }
     case BIGINT: {
-        const Identifier* ident = m_currentArena->identifierArena().makeBigIntDecimalIdentifier(const_cast<VM&>(m_vm), *m_token.m_data.bigIntString, m_token.m_data.radix);
+        const Identifier* ident = m_parserArena.identifierArena().makeBigIntDecimalIdentifier(const_cast<VM&>(m_vm), *m_token.m_data.bigIntString, m_token.m_data.radix);
         failIfFalse(ident, "Cannot parse big int property name");
         unsigned functionStart = timesPosition.value_or(asyncPosition.value_or(m_token.m_startPosition));
         next();
@@ -4980,7 +4982,7 @@ template <class TreeBuilder> TreeProperty Parser<LexerType>::parseGetterSetter(T
         numericPropertyName = m_token.m_data.doubleValue;
         next();
     } else if (match(BIGINT)) {
-        stringPropertyName = m_currentArena->identifierArena().makeBigIntDecimalIdentifier(const_cast<VM&>(m_vm), *m_token.m_data.bigIntString, m_token.m_data.radix);
+        stringPropertyName = m_parserArena.identifierArena().makeBigIntDecimalIdentifier(const_cast<VM&>(m_vm), *m_token.m_data.bigIntString, m_token.m_data.radix);
         failIfFalse(stringPropertyName, "Cannot parse big int property name");
         next();
     } else if (consume(OPENBRACKET)) [[likely]] {
@@ -5015,7 +5017,7 @@ template <class TreeBuilder> TreeProperty Parser<LexerType>::parseGetterSetter(T
     if (computedPropertyName)
         return context.createGetterOrSetterProperty(location, static_cast<PropertyNode::Type>(type | PropertyNode::Computed), computedPropertyName, info, tag);
 
-    return context.createGetterOrSetterProperty(const_cast<VM&>(m_vm), *m_currentArena, location, type, numericPropertyName, info, tag);
+    return context.createGetterOrSetterProperty(const_cast<VM&>(m_vm), m_parserArena.identifierArena(), location, type, numericPropertyName, info, tag);
 }
 
 template <typename LexerType>

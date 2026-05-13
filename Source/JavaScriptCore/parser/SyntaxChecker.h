@@ -231,7 +231,7 @@ public:
     {
         return Property(type);
     }
-    Property createProperty(VM&, ParserArena&, double, int, PropertyNode::Type type, SuperBinding, ClassElementTag)
+    Property createProperty(VM&, IdentifierArena&, double, int, PropertyNode::Type type, SuperBinding, ClassElementTag)
     {
         return Property(type);
     }
@@ -308,7 +308,7 @@ public:
     {
         return Property(type);
     }
-    Property createGetterOrSetterProperty(VM&, ParserArena&, const JSTokenLocation&, PropertyNode::Type type, double, const ParserFunctionInfo<SyntaxChecker>&, ClassElementTag)
+    Property createGetterOrSetterProperty(VM&, IdentifierArena&, const JSTokenLocation&, PropertyNode::Type type, double, const ParserFunctionInfo<SyntaxChecker>&, ClassElementTag)
     {
         return Property(type);
     }

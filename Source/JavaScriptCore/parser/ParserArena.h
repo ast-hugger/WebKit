@@ -147,19 +147,22 @@ namespace JSC {
 
     DECLARE_ALLOCATOR_WITH_HEAP_IDENTIFIER(ParserArena);
 
-    class ParserArena {
-        WTF_MAKE_NONCOPYABLE(ParserArena);
+    // ParserNodeArena provides pool-based allocation for AST nodes. It manages
+    // freeable memory pools and deletable objects, but has no knowledge of
+    // identifiers. Used as the temporary arena during eager IIFE parsing, where
+    // identifiers are allocated in the parser's main arena instead.
+    class ParserNodeArena {
+        WTF_MAKE_NONCOPYABLE(ParserNodeArena);
     public:
-        ParserArena();
-        ~ParserArena();
+        ParserNodeArena();
+        ~ParserNodeArena();
 
-        void swap(ParserArena& otherArena)
+        void swap(ParserNodeArena& other)
         {
-            std::swap(m_freeableMemory, otherArena.m_freeableMemory);
-            std::swap(m_freeablePoolEnd, otherArena.m_freeablePoolEnd);
-            m_identifierArena.swap(otherArena.m_identifierArena);
-            m_freeablePools.swap(otherArena.m_freeablePools);
-            m_deletableObjects.swap(otherArena.m_deletableObjects);
+            std::swap(m_freeableMemory, other.m_freeableMemory);
+            std::swap(m_freeablePoolEnd, other.m_freeablePoolEnd);
+            m_freeablePools.swap(other.m_freeablePools);
+            m_deletableObjects.swap(other.m_deletableObjects);
         }
 
         void* allocateFreeable(size_t size)
@@ -188,14 +191,7 @@ namespace JSC {
             return instance;
         }
 
-        IdentifierArena& identifierArena()
-        {
-            if (!m_identifierArena) [[unlikely]]
-                m_identifierArena = makeUnique<IdentifierArena>();
-            return *m_identifierArena;
-        }
-
-    private:
+    protected:
         static const size_t freeablePoolSize = 8000;
 
         static size_t alignSize(size_t size)
@@ -209,10 +205,35 @@ namespace JSC {
 
         char* m_freeableMemory;
         char* m_freeablePoolEnd;
-
-        std::unique_ptr<IdentifierArena> m_identifierArena;
         Vector<void*> m_freeablePools;
         Vector<ParserArenaDeletable*> m_deletableObjects;
+    };
+
+    // ParserArena extends ParserNodeArena with an IdentifierArena for storing
+    // Identifier objects created during parsing. Used as the parser's main arena.
+    class ParserArena : public ParserNodeArena {
+    public:
+        void swap(ParserArena& other)
+        {
+            ParserNodeArena::swap(other);
+            m_identifierArena.swap(other.m_identifierArena);
+        }
+
+        IdentifierArena& identifierArena()
+        {
+            if (!m_identifierArena) [[unlikely]]
+                m_identifierArena = makeUnique<IdentifierArena>();
+            return *m_identifierArena;
+        }
+
+        // HACK: Leak the IdentifierArena to keep it alive for IIFE FunctionNodes
+        // stored in EagerIIFERegistry. Those nodes reference identifiers in this arena
+        // but may outlive the ProgramNode that normally owns it. Remove this once
+        // IdentifierArena lifetime is properly managed (e.g. via RefCounted).
+        void leakIdentifierArena() { (void)m_identifierArena.release(); }
+
+    private:
+        std::unique_ptr<IdentifierArena> m_identifierArena;
     };
 
 } // namespace JSC

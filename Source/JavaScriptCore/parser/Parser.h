@@ -1180,7 +1180,7 @@ private:
 
     class EagerIIFEParseState {
     public:
-        EagerIIFEParseState(Parser& parser, ASTBuilder* builder, ParserArena& arena, unsigned startOffset)
+        EagerIIFEParseState(Parser& parser, ASTBuilder* builder, ParserNodeArena& arena, unsigned startOffset)
             : m_parser(parser)
             , m_builder(builder)
             , m_startOffset(startOffset)
@@ -1229,7 +1229,7 @@ private:
         bool m_isInUse { false };
         unsigned m_startOffset;
 
-        ParserArena* m_savedArena;
+        ParserNodeArena* m_savedArena;
         EagerIIFEParseState* m_savedIIFEParseState;
 
         FunctionParameters* m_functionParameters { nullptr };
@@ -2154,9 +2154,8 @@ private:
         m_errorMessage = String();
     }
 
-    ALWAYS_INLINE void setCurrentArena(ParserArena& arena) {
+    ALWAYS_INLINE void setCurrentArena(ParserNodeArena& arena) {
         m_currentArena = &arena;
-        m_lexer->setIdentifierArena(&arena.identifierArena());
     }
 
     // Hotter fields first
@@ -2187,7 +2186,7 @@ private:
     bool m_insideSwitchCaseBody { false };
 
     ParserArena m_parserArena;
-    ParserArena* m_currentArena { nullptr };
+    ParserNodeArena* m_currentArena { nullptr };
     CallOrApplyDepthScope* m_callOrApplyDepthScope { nullptr };
     ScopeStack m_scopeStack;
     bool m_hasStackOverflow;

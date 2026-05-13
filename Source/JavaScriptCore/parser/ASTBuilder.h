@@ -79,7 +79,7 @@ class ASTBuilder {
         Operator m_op;
     };
 public:
-    ASTBuilder(VM& vm, ParserArena& parserArena, SourceCode* sourceCode)
+    ASTBuilder(VM& vm, ParserNodeArena& parserArena, SourceCode* sourceCode)
         : m_vm(vm)
         , m_parserArena(parserArena)
         , m_sourceCode(sourceCode)
@@ -520,11 +520,11 @@ public:
         return new (m_parserArena) PropertyNode(name, methodDef, type, SuperBinding::Needed, tag);
     }
 
-    NEVER_INLINE PropertyNode* createGetterOrSetterProperty(VM& vm, ParserArena& parserArena, const JSTokenLocation& location, PropertyNode::Type type,
+    NEVER_INLINE PropertyNode* createGetterOrSetterProperty(VM& vm, IdentifierArena& identifierArena, const JSTokenLocation& location, PropertyNode::Type type,
         double name, const ParserFunctionInfo<ASTBuilder>& functionInfo, ClassElementTag tag)
     {
         functionInfo.body->setLoc(functionInfo.startLine, functionInfo.endLine, location.startOffset, location.lineStartOffset);
-        const Identifier& ident = parserArena.identifierArena().makeNumericIdentifier(vm, name);
+        const Identifier& ident = identifierArena.makeNumericIdentifier(vm, name);
         functionInfo.body->setEcmaName(ident);
         SourceCode source = m_sourceCode->subExpression(functionInfo.startOffset, functionInfo.endOffset, functionInfo.startLine, functionInfo.parametersStartColumn);
         MethodDefinitionNode* methodDef = new (m_parserArena) MethodDefinitionNode(location, vm.propertyNames->nullIdentifier, functionInfo.body, source);
@@ -550,9 +550,9 @@ public:
     {
         return new (m_parserArena) PropertyNode(node, type, superBinding, tag);
     }
-    PropertyNode* createProperty(VM& vm, ParserArena& parserArena, double propertyName, ExpressionNode* node, PropertyNode::Type type, SuperBinding superBinding, ClassElementTag tag)
+    PropertyNode* createProperty(VM& vm, IdentifierArena& identifierArena, double propertyName, ExpressionNode* node, PropertyNode::Type type, SuperBinding superBinding, ClassElementTag tag)
     {
-        return new (m_parserArena) PropertyNode(parserArena.identifierArena().makeNumericIdentifier(vm, propertyName), node, type, superBinding, tag);
+        return new (m_parserArena) PropertyNode(identifierArena.makeNumericIdentifier(vm, propertyName), node, type, superBinding, tag);
     }
     PropertyNode* createProperty(ExpressionNode* propertyName, ExpressionNode* node, PropertyNode::Type type, SuperBinding superBinding, ClassElementTag tag) { return new (m_parserArena) PropertyNode(propertyName, node, type, superBinding, tag); }
     PropertyNode* createProperty(const Identifier* identifier, ExpressionNode* propertyName, ExpressionNode* node, PropertyNode::Type type, SuperBinding superBinding, ClassElementTag tag) { return new (m_parserArena) PropertyNode(*identifier, propertyName, node, type, superBinding, tag); }
@@ -1211,7 +1211,7 @@ private:
     }
 
     VM& m_vm;
-    ParserArena& m_parserArena;
+    ParserNodeArena& m_parserArena;
     SourceCode* m_sourceCode;
     Scope m_scope;
     Vector<BinaryOperand, 10, UnsafeVectorOverflow> m_binaryOperandStack;
