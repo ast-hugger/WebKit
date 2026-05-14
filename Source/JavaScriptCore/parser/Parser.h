@@ -2155,8 +2155,8 @@ private:
     }
 
     ALWAYS_INLINE void setCurrentArena(ParserArena& arena) {
+        ASSERT(m_lexer->identifierArena() == &arena.identifierArena());
         m_currentArena = &arena;
-        m_lexer->setIdentifierArena(&arena.identifierArena());
     }
 
     // Hotter fields first

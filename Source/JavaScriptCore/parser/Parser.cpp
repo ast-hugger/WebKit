@@ -97,14 +97,16 @@ WTF_MAKE_TZONE_ALLOCATED_IMPL(ModuleScopeData);
 // EagerIIFEParseScope is created as a local in parseFunctionInfo when an IIFE candidate
 // is detected. It owns a separate ParserArena and ASTBuilder, and constructs an
 // EagerIIFEParseState that installs itself into the parser, redirecting the parser's
-// current arena. The FunctionNode created for the IIFE takes ownership of the scope's
-// arena contents via swap.
+// current arena. The scope's ParserArena shares its IdentifierArena with the parent
+// arena, so identifiers can be freely shared between ASTs. The FunctionNode created for
+// the IIFE takes ownership of the scope's arena contents (including a reference to the
+// shared IdentifierArena) via swap, keeping it alive until the AST is destroyed.
 
 template<typename LexerType>
 class EagerIIFEParseScope {
 public:
     EagerIIFEParseScope(Parser<LexerType>* parser, unsigned startOffset)
-        : m_arena()
+        : m_arena(Ref { parser->m_currentArena->identifierArena() })
         , m_builder(const_cast<VM&>(parser->m_vm), m_arena, const_cast<SourceCode*>(parser->m_source))
         , m_parseState(*parser, &m_builder, m_arena, startOffset)
     { }
@@ -170,6 +172,7 @@ Parser<LexerType>::Parser(VM& vm, const SourceCode& source, ImplementationVisibi
     , m_implementationVisibility(implementationVisibility)
     , m_parsingBuiltin(builtinMode == JSParserBuiltinMode::Builtin)
     , m_isInsideOrdinaryFunction(isInsideOrdinaryFunction)
+    , m_parserArena(IdentifierArena::create())
     , m_hasStackOverflow(false)
     , m_debuggerParseData(debuggerParseData)
 {
