@@ -1034,6 +1034,14 @@ EagerIIFERegistry* VM::addEagerIIFERegistry(SourceProvider* sourceProvider)
     return addResult.iterator->value.get();
 }
 
+EagerIIFERegistry* VM::eagerIIFERegistryFor(SourceProvider* sourceProvider)
+{
+    auto it = eagerIIFERegistryMap.find(sourceProvider);
+    if (it == eagerIIFERegistryMap.end())
+        return nullptr;
+    return it->value.get();
+}
+
 void VM::clearSourceProviderCaches()
 {
     sourceProviderCacheMap.clear();

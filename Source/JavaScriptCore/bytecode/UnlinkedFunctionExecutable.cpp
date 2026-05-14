@@ -50,6 +50,31 @@ static_assert(sizeof(UnlinkedFunctionExecutable) <= 128, "UnlinkedFunctionExecut
 
 const ClassInfo UnlinkedFunctionExecutable::s_info = { "UnlinkedFunctionExecutable"_s, nullptr, nullptr, nullptr, CREATE_METHOD_TABLE(UnlinkedFunctionExecutable) };
 
+UnlinkedFunctionCodeBlock* compileFunctionNodeToUnlinkedCodeBlock(
+    VM& vm, UnlinkedFunctionExecutable* executable, FunctionNode* function, const SourceCode& source,
+    CodeSpecializationKind kind, OptionSet<CodeGenerationMode> codeGenerationMode,
+    UnlinkedFunctionKind functionKind, ParserError& error, SourceParseMode parseMode)
+{
+    ASSERT(function);
+    function->finishParsing(executable->name(), executable->functionMode());
+    executable->recordParse(function->features(), function->lexicallyScopedFeatures(), function->hasCapturedVariables());
+
+    JSParserScriptMode scriptMode = executable->scriptMode();
+    bool isClassContext = executable->superBinding() == SuperBinding::Needed || executable->parseMode() == SourceParseMode::ClassFieldInitializerMode;
+
+    UnlinkedFunctionCodeBlock* result = UnlinkedFunctionCodeBlock::create(vm, FunctionCode, ExecutableInfo(kind == CodeSpecializationKind::CodeForConstruct, executable->privateBrandRequirement(), functionKind == UnlinkedBuiltinFunction, executable->constructorKind(), scriptMode, executable->superBinding(), parseMode, executable->derivedContextType(), executable->needsClassFieldInitializer(), false, isClassContext, executable->evalContextType(), executable->isBuiltinDefaultClassConstructor()), codeGenerationMode);
+
+    auto parentScopeTDZVariables = executable->parentScopeTDZVariables();
+    const FixedVector<Identifier>* generatorOrAsyncWrapperFunctionParameterNames = executable->generatorOrAsyncWrapperFunctionParameterNames();
+    const PrivateNameEnvironment* parentPrivateNameEnvironment = executable->parentPrivateNameEnvironment();
+    error = BytecodeGenerator::generate(vm, function, source, result, codeGenerationMode, parentScopeTDZVariables, generatorOrAsyncWrapperFunctionParameterNames, parentPrivateNameEnvironment);
+
+    if (error.isValid())
+        return nullptr;
+    vm.codeCache()->updateCache(executable, source, kind, result);
+    return result;
+}
+
 static UnlinkedFunctionCodeBlock* generateUnlinkedFunctionCodeBlock(
     VM& vm, UnlinkedFunctionExecutable* executable, const SourceCode& source,
     CodeSpecializationKind kind, OptionSet<CodeGenerationMode> codeGenerationMode,
@@ -67,22 +92,7 @@ static UnlinkedFunctionCodeBlock* generateUnlinkedFunctionCodeBlock(
         return nullptr;
     }
 
-    function->finishParsing(executable->name(), executable->functionMode());
-    executable->recordParse(function->features(), function->lexicallyScopedFeatures(), function->hasCapturedVariables());
-
-    bool isClassContext = executable->superBinding() == SuperBinding::Needed || executable->parseMode() == SourceParseMode::ClassFieldInitializerMode;
-
-    UnlinkedFunctionCodeBlock* result = UnlinkedFunctionCodeBlock::create(vm, FunctionCode, ExecutableInfo(kind == CodeSpecializationKind::CodeForConstruct, executable->privateBrandRequirement(), functionKind == UnlinkedBuiltinFunction, executable->constructorKind(), scriptMode, executable->superBinding(), parseMode, executable->derivedContextType(), executable->needsClassFieldInitializer(), false, isClassContext, executable->evalContextType(), executable->isBuiltinDefaultClassConstructor()), codeGenerationMode);
-
-    auto parentScopeTDZVariables = executable->parentScopeTDZVariables();
-    const FixedVector<Identifier>* generatorOrAsyncWrapperFunctionParameterNames = executable->generatorOrAsyncWrapperFunctionParameterNames();
-    const PrivateNameEnvironment* parentPrivateNameEnvironment = executable->parentPrivateNameEnvironment();
-    error = BytecodeGenerator::generate(vm, function.get(), source, result, codeGenerationMode, parentScopeTDZVariables, generatorOrAsyncWrapperFunctionParameterNames, parentPrivateNameEnvironment);
-
-    if (error.isValid())
-        return nullptr;
-    vm.codeCache()->updateCache(executable, source, kind, result);
-    return result;
+    return compileFunctionNodeToUnlinkedCodeBlock(vm, executable, function.get(), source, kind, codeGenerationMode, functionKind, error, parseMode);
 }
 
 UnlinkedFunctionExecutable::UnlinkedFunctionExecutable(VM& vm, Structure* structure, const SourceCode& parentSource, FunctionMetadataNode* node, UnlinkedFunctionKind kind, ConstructAbility constructAbility, InlineAttribute inlineAttribute, JSParserScriptMode scriptMode, RefPtr<TDZEnvironmentLink> parentScopeTDZVariables, std::optional<Vector<Identifier>>&& generatorOrAsyncWrapperFunctionParameterNames, std::optional<PrivateNameEnvironment> parentPrivateNameEnvironment, DerivedContextType derivedContextType, EvalContextType evalContextType, NeedsClassFieldInitializer needsClassFieldInitializer, PrivateBrandRequirement privateBrandRequirement, bool isBuiltinDefaultClassConstructor)
@@ -271,6 +281,13 @@ UnlinkedFunctionCodeBlock* UnlinkedFunctionExecutable::unlinkedCodeBlockFor(
     // FIXME GlobalGC: Need syncrhonization here for accessing the Heap server.
     vm.heap.unlinkedFunctionExecutableSpaceAndSet.set.add(this);
     return result;
+}
+
+void UnlinkedFunctionExecutable::installUnlinkedCodeBlockForCall(VM& vm, UnlinkedFunctionCodeBlock* codeBlock)
+{
+    m_unlinkedCodeBlockForCall.set(vm, this, codeBlock);
+    // FIXME GlobalGC: Need syncrhonization here for accessing the Heap server.
+    vm.heap.unlinkedFunctionExecutableSpaceAndSet.set.add(this);
 }
 
 void UnlinkedFunctionExecutable::decodeCachedCodeBlocks(VM& vm)

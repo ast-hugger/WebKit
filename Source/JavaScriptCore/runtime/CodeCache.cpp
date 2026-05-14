@@ -83,7 +83,7 @@ UnlinkedCodeBlockType* generateUnlinkedCodeBlockImpl(VM& vm, const SourceCode& s
     bool isInsideOrdinaryFunction = executable && executable->isInsideOrdinaryFunction();
 
     std::unique_ptr<RootNode> rootNode = parse<RootNode>(
-        vm, source, Identifier(), ImplementationVisibility::Public, JSParserBuiltinMode::NotBuiltin, lexicallyScopedFeatures, scriptMode, CacheTypes<UnlinkedCodeBlockType>::parseMode, FunctionMode::None, SuperBinding::NotNeeded, error, ConstructorKind::None, derivedContextType, evalContextType, privateNameEnvironment, nullptr, isInsideOrdinaryFunction);
+        vm, source, Identifier(), ImplementationVisibility::Public, JSParserBuiltinMode::NotBuiltin, lexicallyScopedFeatures, scriptMode, CacheTypes<UnlinkedCodeBlockType>::parseMode, FunctionMode::None, SuperBinding::NotNeeded, error, ConstructorKind::None, derivedContextType, evalContextType, privateNameEnvironment, nullptr, isInsideOrdinaryFunction, codeGenerationMode);
 
     if (!rootNode)
         return nullptr;

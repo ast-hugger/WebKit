@@ -1046,7 +1046,7 @@ class CACHE_LINE_ALIGNED Parser {
     WTF_MAKE_TZONE_NON_HEAP_ALLOCATABLE(Parser);
 
 public:
-    Parser(VM&, const SourceCode&, ImplementationVisibility, JSParserBuiltinMode, LexicallyScopedFeatures, JSParserScriptMode, SourceParseMode, FunctionMode, SuperBinding, ConstructorKind = ConstructorKind::None, DerivedContextType = DerivedContextType::None, bool isEvalContext = false, EvalContextType = EvalContextType::None, DebuggerParseData* = nullptr, bool isInsideOrdinaryFunction = false);
+    Parser(VM&, const SourceCode&, ImplementationVisibility, JSParserBuiltinMode, LexicallyScopedFeatures, JSParserScriptMode, SourceParseMode, FunctionMode, SuperBinding, ConstructorKind = ConstructorKind::None, DerivedContextType = DerivedContextType::None, bool isEvalContext = false, EvalContextType = EvalContextType::None, DebuggerParseData* = nullptr, bool isInsideOrdinaryFunction = false, OptionSet<CodeGenerationMode> codeGenerationMode = { });
     ~Parser();
 
     template <class ParsedNode>
@@ -2195,6 +2195,7 @@ private:
     DebuggerParseData* m_debuggerParseData;
     EagerIIFEParseState* m_iifeParseState { nullptr };
     RefPtr<EagerIIFERegistry> m_eagerIIFERegistry;
+    OptionSet<CodeGenerationMode> m_codeGenerationMode;
     bool m_nextFunctionIsLikelyIIFE { false };
     bool m_seenTaggedTemplateInNonReparsingFunctionMode { false };
     bool m_seenPrivateNameUseInNonReparsingFunctionMode { false };
@@ -2214,7 +2215,7 @@ std::unique_ptr<ParsedNode> Parser<LexerType>::parse(ParserError& error, const I
 
     if constexpr (std::is_same_v<ParsedNode, FunctionNode>) {
         if (m_eagerIIFERegistry) {
-            if (auto cached = m_eagerIIFERegistry->take(m_source->startOffset())) {
+            if (auto cached = m_eagerIIFERegistry->takePendingNode(m_source->startOffset())) {
                 m_lexer->clear();
                 return std::unique_ptr<ParsedNode>(cached.release());
             }
@@ -2271,6 +2272,11 @@ std::unique_ptr<ParsedNode> Parser<LexerType>::parse(ParserError& error, const I
             m_source->provider()->setSourceURLDirective(m_lexer->sourceURLDirective());
             m_source->provider()->setSourceMappingURLDirective(m_lexer->sourceMappingURLDirective());
         }
+
+        if constexpr (std::is_same_v<ParsedNode, ProgramNode>) {
+            if (m_eagerIIFERegistry && m_eagerIIFERegistry->hasPendingNodes())
+                performEagerIIFECompileForProgram(m_vm, *m_eagerIIFERegistry, *result, *m_source, m_codeGenerationMode, m_scriptMode);
+        }
     } else {
         // We can never see a syntax error when reparsing a function, since we should have
         // reported the error when parsing the containing program or eval code. So if we're
@@ -2313,7 +2319,8 @@ std::unique_ptr<ParsedNode> parse(
     EvalContextType evalContextType = EvalContextType::None,
     const PrivateNameEnvironment* parentScopePrivateNames = nullptr,
     const FixedVector<UnlinkedFunctionExecutable::ClassElementDefinition>* classElementDefinitions = nullptr,
-    bool isInsideOrdinaryFunction = false)
+    bool isInsideOrdinaryFunction = false,
+    OptionSet<CodeGenerationMode> codeGenerationMode = { })
 {
     ASSERT(!source.provider()->source().isNull());
 
@@ -2323,7 +2330,7 @@ std::unique_ptr<ParsedNode> parse(
 
     std::unique_ptr<ParsedNode> result;
     if (source.provider()->source().is8Bit()) {
-        Parser<Lexer<Latin1Character>> parser(vm, source, implementationVisibility, builtinMode, lexicallyScopedFeatures, scriptMode, parseMode, functionMode, superBinding, constructorKind, derivedContextType, isEvalNode<ParsedNode>(), evalContextType, nullptr, isInsideOrdinaryFunction);
+        Parser<Lexer<Latin1Character>> parser(vm, source, implementationVisibility, builtinMode, lexicallyScopedFeatures, scriptMode, parseMode, functionMode, superBinding, constructorKind, derivedContextType, isEvalNode<ParsedNode>(), evalContextType, nullptr, isInsideOrdinaryFunction, codeGenerationMode);
         result = parser.parse<ParsedNode>(error, name, ParsingContext::Normal, std::nullopt, parentScopePrivateNames, classElementDefinitions);
         if (builtinMode == JSParserBuiltinMode::Builtin) {
             if (!result) {
@@ -2333,7 +2340,7 @@ std::unique_ptr<ParsedNode> parse(
             }
         }
     } else {
-        Parser<Lexer<char16_t>> parser(vm, source, implementationVisibility, builtinMode, lexicallyScopedFeatures, scriptMode, parseMode, functionMode, superBinding, constructorKind, derivedContextType, isEvalNode<ParsedNode>(), evalContextType, nullptr, isInsideOrdinaryFunction);
+        Parser<Lexer<char16_t>> parser(vm, source, implementationVisibility, builtinMode, lexicallyScopedFeatures, scriptMode, parseMode, functionMode, superBinding, constructorKind, derivedContextType, isEvalNode<ParsedNode>(), evalContextType, nullptr, isInsideOrdinaryFunction, codeGenerationMode);
         result = parser.parse<ParsedNode>(error, name, ParsingContext::Normal, std::nullopt, parentScopePrivateNames, classElementDefinitions);
     }
 

@@ -158,7 +158,7 @@ void Parser<LexerType>::logError(bool shouldPrintToken, Args&&... args)
 }
 
 template <typename LexerType>
-Parser<LexerType>::Parser(VM& vm, const SourceCode& source, ImplementationVisibility implementationVisibility, JSParserBuiltinMode builtinMode, LexicallyScopedFeatures lexicallyScopedFeatures, JSParserScriptMode scriptMode, SourceParseMode parseMode, FunctionMode functionMode, SuperBinding superBinding, ConstructorKind constructorKind, DerivedContextType derivedContextType, bool isEvalContext, EvalContextType evalContextType, DebuggerParseData* debuggerParseData, bool isInsideOrdinaryFunction)
+Parser<LexerType>::Parser(VM& vm, const SourceCode& source, ImplementationVisibility implementationVisibility, JSParserBuiltinMode builtinMode, LexicallyScopedFeatures lexicallyScopedFeatures, JSParserScriptMode scriptMode, SourceParseMode parseMode, FunctionMode functionMode, SuperBinding superBinding, ConstructorKind constructorKind, DerivedContextType derivedContextType, bool isEvalContext, EvalContextType evalContextType, DebuggerParseData* debuggerParseData, bool isInsideOrdinaryFunction, OptionSet<CodeGenerationMode> codeGenerationMode)
     : m_vm(vm)
     , m_allowsIn(true)
     , m_immediateParentAllowsFunctionDeclarationInStatement(false)
@@ -173,6 +173,7 @@ Parser<LexerType>::Parser(VM& vm, const SourceCode& source, ImplementationVisibi
     , m_isInsideOrdinaryFunction(isInsideOrdinaryFunction)
     , m_hasStackOverflow(false)
     , m_debuggerParseData(debuggerParseData)
+    , m_codeGenerationMode(codeGenerationMode)
 {
     m_lexer = makeUnique<LexerType>(vm, builtinMode, scriptMode);
     m_lexer->setCode(source, &m_parserArena);
@@ -3053,7 +3054,8 @@ template <class TreeBuilder> bool Parser<LexerType>::parseFunctionInfo(TreeBuild
             FunctionMode::FunctionExpression);
 
         m_parserArena.leakIdentifierArena();
-        m_eagerIIFERegistry->add(functionInfo.startOffset, WTF::move(functionNode));
+        if constexpr (std::is_same_v<TreeBuilder, ASTBuilder>)
+            m_eagerIIFERegistry->addPendingNode(functionInfo.startOffset, WTF::move(functionNode), functionInfo.body);
     }
     
     functionInfo.endLine = m_lastTokenLocation.line;

@@ -48,6 +48,7 @@ class CachedFunctionExecutable;
 class Decoder;
 class FunctionExecutable;
 class FunctionMetadataNode;
+class FunctionNode;
 class ParserError;
 class ScriptExecutable;
 class SourceProvider;
@@ -135,6 +136,11 @@ public:
         // FIXME GlobalGC: Need syncrhonization here for accessing the Heap server.
         vm.heap.unlinkedFunctionExecutableSpaceAndSet.set.remove(this);
     }
+
+    // Install a pre-generated UnlinkedFunctionCodeBlock for the CodeForCall
+    // specialization. Used by the eager-IIFE path to skip the lazy compile
+    // that would otherwise run from unlinkedCodeBlockFor().
+    void installUnlinkedCodeBlockForCall(VM&, UnlinkedFunctionCodeBlock*);
 
     void recordParse(CodeFeatures features, LexicallyScopedFeatures lexicallyScopedFeatures, bool hasCapturedVariables)
     {
@@ -355,5 +361,7 @@ public:
 #if !ASSERT_ENABLED
 static_assert(sizeof(UnlinkedFunctionExecutable) <= 96, "UnlinkedFunctionExecutable needs to be small");
 #endif
+
+UnlinkedFunctionCodeBlock* compileFunctionNodeToUnlinkedCodeBlock(VM&, UnlinkedFunctionExecutable*, FunctionNode*, const SourceCode&, CodeSpecializationKind, OptionSet<CodeGenerationMode>, UnlinkedFunctionKind, ParserError&, SourceParseMode);
 
 } // namespace JSC

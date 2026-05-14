@@ -33,6 +33,7 @@
 #include "BytecodeGeneratorBase.h"
 #include "BytecodeStructs.h"
 #include "CodeBlock.h"
+#include "EagerIIFERegistry.h"
 #include "Instruction.h"
 #include "Interpreter.h"
 #include "JSAsyncGenerator.h"
@@ -1215,6 +1216,16 @@ namespace JSC {
 
         UnlinkedFunctionExecutable* makeFunction(FunctionMetadataNode* metadata)
         {
+            // Eager-IIFE hit: registry holds an UnlinkedFunctionExecutable with
+            // its CodeForCall code block already installed. Short-circuit the
+            // normal create() path so the program's bytecode pass reuses it.
+            // The registry key matches Parser's functionInfo.startOffset, which
+            // is the parameters start offset (see Parser.cpp:~2825).
+            if (auto* registry = m_vm.eagerIIFERegistryFor(m_scopeNode->source().provider())) {
+                if (UnlinkedFunctionExecutable* cached = registry->takeExecutable(metadata->parametersStart()))
+                    return cached;
+            }
+
             DerivedContextType newDerivedContextType = DerivedContextType::None;
             EvalContextType newEvalContextType = EvalContextType::FunctionEvalContext;
 

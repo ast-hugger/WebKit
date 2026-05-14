@@ -803,6 +803,7 @@ public:
 
     SourceProviderCache* addSourceProviderCache(SourceProvider*);
     EagerIIFERegistry* addEagerIIFERegistry(SourceProvider*);
+    EagerIIFERegistry* eagerIIFERegistryFor(SourceProvider*);
     void clearSourceProviderCaches();
 
     typedef UncheckedKeyHashMap<RefPtr<SourceProvider>, RefPtr<SourceProviderCache>> SourceProviderCacheMap;
