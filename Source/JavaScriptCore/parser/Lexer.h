@@ -63,6 +63,7 @@ public:
 
     // Functions to set up parsing.
     void setCode(const SourceCode&, ParserArena*);
+    IdentifierArena* identifierArena() const { return m_arena; }
     void setIsReparsingFunction() { m_isReparsingFunction = true; }
     bool isReparsingFunction() const { return m_isReparsingFunction; }
 
