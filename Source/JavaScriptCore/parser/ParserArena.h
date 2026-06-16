@@ -161,7 +161,16 @@ namespace JSC {
         {
             std::swap(m_freeableMemory, otherArena.m_freeableMemory);
             std::swap(m_freeablePoolEnd, otherArena.m_freeablePoolEnd);
-            m_identifierArena.swap(otherArena.m_identifierArena);
+            // The IdentifierArena is SHARED rather than swapped: both arenas
+            // continue to reference the same IdentifierArena after the swap.
+            // The sole caller is ParserArenaRoot's constructor, which moves
+            // parsed AST nodes into a new root node's arena. Sharing keeps
+            // identifier interning consistent with the lexer's raw pointer if
+            // anyone allocates through either arena after the swap.
+            if (m_identifierArena)
+                otherArena.m_identifierArena = m_identifierArena;
+            else
+                m_identifierArena = otherArena.m_identifierArena;
             m_freeablePools.swap(otherArena.m_freeablePools);
             m_deletableObjects.swap(otherArena.m_deletableObjects);
         }
