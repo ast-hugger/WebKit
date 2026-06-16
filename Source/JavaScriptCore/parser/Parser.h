@@ -1198,15 +1198,28 @@ private:
             , m_startOffset(startOffset)
             , m_savedArena(parser.m_currentArena)
             , m_savedIIFEParseState(parser.m_iifeParseState)
+            , m_savedSeenTaggedTemplate(parser.m_seenTaggedTemplateInNonReparsingFunctionMode)
+            , m_savedSeenPrivateNameUse(parser.m_seenPrivateNameUseInNonReparsingFunctionMode)
+            , m_savedSeenArgumentsDotLength(parser.m_seenArgumentsDotLength)
         {
             parser.setCurrentArena(arena);
             parser.m_iifeParseState = this;
+            // Reset parser-wide "seen-anywhere" flags so the IIFE body is parsed in
+            // isolation, matching what a lazy reparse (a fresh Parser instance) would
+            // observe. The destructor ORs the IIFE's contribution back into the outer
+            // parser so it still observes everything that was lexically inside its source.
+            parser.m_seenTaggedTemplateInNonReparsingFunctionMode = false;
+            parser.m_seenPrivateNameUseInNonReparsingFunctionMode = false;
+            parser.m_seenArgumentsDotLength = false;
         }
 
         ~EagerIIFEParseState()
         {
             m_parser.setCurrentArena(*m_savedArena);
             m_parser.m_iifeParseState = m_savedIIFEParseState;
+            m_parser.m_seenTaggedTemplateInNonReparsingFunctionMode |= m_savedSeenTaggedTemplate;
+            m_parser.m_seenPrivateNameUseInNonReparsingFunctionMode |= m_savedSeenPrivateNameUse;
+            m_parser.m_seenArgumentsDotLength |= m_savedSeenArgumentsDotLength;
         }
 
         template <typename TreeBuilder>
@@ -1243,6 +1256,9 @@ private:
 
         ParserArena* m_savedArena;
         EagerIIFEParseState* m_savedIIFEParseState;
+        bool m_savedSeenTaggedTemplate;
+        bool m_savedSeenPrivateNameUse;
+        bool m_savedSeenArgumentsDotLength;
 
         FunctionParameters* m_functionParameters { nullptr };
         SourceElements* m_sourceElements { nullptr };
