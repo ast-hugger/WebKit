@@ -2995,6 +2995,18 @@ template <class TreeBuilder> bool Parser<LexerType>::parseFunctionInfo(TreeBuild
         iifeLexFeatures = functionScope->lexicallyScopedFeatures();
         iifeInnerFeatures = functionScope->innerArrowFunctionFeatures();
 
+        // iifeVarDeclarations is captured by COPY here, before popScope at line 3005.
+        // The non-eager path in parseInner instead takes declaredVariables by
+        // REFERENCE and marks captures in-place — popScope can then observe the
+        // marked variables. The eager path can't do the same because popScope
+        // destructs the scope (its m_scopeStack slot is removed), so we have to
+        // snapshot before pop. Today's popScope chain (finalizeLexicalEnvironment,
+        // collectFreeVariables, bubbleSloppyModeFunctionHoistingCandidates, etc.)
+        // does not mutate the popped scope's m_declaredVariables, so the copy and
+        // the reference end up with identical content. If a future change ever
+        // makes popScope touch m_declaredVariables of the popped scope, this copy
+        // will silently fall out of sync with the non-eager path and the cached
+        // FunctionNode will diverge.
         iifeVarDeclarations = functionScope->declaredVariables();
         IdentifierSet capturedVariables;
         functionScope->getCapturedVars(capturedVariables);
