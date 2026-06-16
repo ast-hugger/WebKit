@@ -2270,6 +2270,17 @@ std::unique_ptr<ParsedNode> Parser<LexerType>::parse(ParserError& error, const I
 
     if constexpr (std::is_same_v<ParsedNode, FunctionNode>) {
         if (m_eagerIIFERegistry) {
+            // The cache is keyed only by source offset; we do not validate that the
+            // requested parse context (lexicallyScopedFeatures, derivedContextType,
+            // evalContextType, parentScopePrivateNames, etc.) matches the context
+            // under which the cached FunctionNode was eagerly built. This is safe
+            // today because each UnlinkedFunctionExecutable that triggers a function
+            // reparse was created during the same outer parse that populated this
+            // entry, so contexts match by construction. If a future change ever
+            // allows the same SourceProvider to be parsed under multiple distinct
+            // contexts with cache entries surviving across them, this lookup would
+            // need to validate (or key on) the context as SourceProviderCacheItem
+            // does at Parser.cpp:2659.
             if (auto cached = m_eagerIIFERegistry->take(m_source->startOffset())) {
                 m_lexer->clear();
                 return std::unique_ptr<ParsedNode>(cached.release());
