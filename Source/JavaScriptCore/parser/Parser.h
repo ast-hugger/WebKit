@@ -2212,23 +2212,24 @@ private:
     SourceParseMode m_parseMode;
     ConstructorKind m_constructorKindForTopLevelFunctionExpressions { ConstructorKind::None };
     bool m_isInsideOrdinaryFunction;
+    bool m_nextFunctionIsLikelyIIFE { false };
     bool m_seenTaggedTemplateInNonReparsingFunctionMode { false };
     bool m_seenPrivateNameUseInNonReparsingFunctionMode { false };
+
     bool m_seenArgumentsDotLength { false };
     bool m_parsingBuiltin;
     bool m_isEvalContext;
-
     RefPtr<SourceProviderCache> m_functionCache;
     CallOrApplyDepthScope* m_callOrApplyDepthScope { nullptr };
     RefPtr<ModuleScopeData> m_moduleScopeData;
-    JSParserScriptMode m_scriptMode;
-    SuperBinding m_superBinding;
-    bool m_hasStackOverflow;
-    ScopeStack m_scopeStack;
     ParserArena* m_currentArena { nullptr };
     EagerIIFEParseState* m_iifeParseState { nullptr };
     RefPtr<EagerIIFERegistry> m_eagerIIFERegistry;
-    bool m_nextFunctionIsLikelyIIFE { false };
+    JSParserScriptMode m_scriptMode;
+    SuperBinding m_superBinding;
+    bool m_hasStackOverflow;
+
+    ScopeStack m_scopeStack;
 
     static void verifyLayout();
 };
