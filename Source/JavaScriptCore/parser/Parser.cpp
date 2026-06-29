@@ -2616,8 +2616,10 @@ template <class TreeBuilder> typename TreeBuilder::FormalParameterList Parser<Le
 }
 
 template <typename LexerType>
-template <class TreeBuilder> bool Parser<LexerType>::parseFunctionInfo(TreeBuilder& context, FunctionNameRequirements requirements, bool nameIsInContainingScope, ConstructorKind constructorKind, SuperBinding expectedSuperBinding, unsigned functionStart, ParserFunctionInfo<TreeBuilder>& functionInfo, FunctionDefinitionType functionDefinitionType, std::optional<int> functionConstructorParametersEndPosition, bool isLikelyIIFE)
+template <class TreeBuilder> bool Parser<LexerType>::parseFunctionInfo(TreeBuilder& context, FunctionNameRequirements requirements, bool nameIsInContainingScope, ConstructorKind constructorKind, SuperBinding expectedSuperBinding, unsigned functionStart, ParserFunctionInfo<TreeBuilder>& functionInfo, FunctionDefinitionType functionDefinitionType, std::optional<int> functionConstructorParametersEndPosition)
 {
+    const bool isLikelyIIFE = m_nextFunctionIsLikelyIIFE;
+    m_nextFunctionIsLikelyIIFE = false;
     auto mode = sourceParseMode();
     RELEASE_ASSERT(isFunctionParseMode(mode));
 
@@ -5178,8 +5180,9 @@ template <typename LexerType>
 template <class TreeBuilder> TreeExpression Parser<LexerType>::parseFunctionExpression(TreeBuilder& context)
 {
     ASSERT(match(FUNCTION));
-    bool isLikelyIIFE = m_nextFunctionIsLikelyIIFE || m_lastTokenType == EXCLAMATION;
-    m_nextFunctionIsLikelyIIFE = false;
+    if (m_lastTokenType == EXCLAMATION)
+        m_nextFunctionIsLikelyIIFE = true;
+    // parseFunctionInfo reads and clears m_nextFunctionIsLikelyIIFE.
     SetForScope nonLHSCountScope(m_parserState.nonLHSCount);
     JSTokenLocation location(tokenLocation());
     unsigned functionStart = tokenStart();
@@ -5194,7 +5197,7 @@ template <class TreeBuilder> TreeExpression Parser<LexerType>::parseFunctionExpr
     ConstructorKind constructorKind = currentScope()->isGlobalCode() ? m_constructorKindForTopLevelFunctionExpressions : ConstructorKind::None;
     SuperBinding expectedSuperBinding = constructorKind == ConstructorKind::Extends ? SuperBinding::Needed : SuperBinding::NotNeeded;
 
-    failIfFalse((parseFunctionInfo(context, FunctionNameRequirements::None, false, constructorKind, expectedSuperBinding, functionStart, functionInfo, FunctionDefinitionType::Expression, std::nullopt, isLikelyIIFE)), "Cannot parse function expression");
+    failIfFalse((parseFunctionInfo(context, FunctionNameRequirements::None, false, constructorKind, expectedSuperBinding, functionStart, functionInfo, FunctionDefinitionType::Expression, std::nullopt)), "Cannot parse function expression");
     return context.createFunctionExpr(location, functionInfo);
 }
 
