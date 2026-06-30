@@ -2721,6 +2721,350 @@ template <class TreeBuilder> bool Parser<LexerType>::parseFunctionInfo(TreeBuild
 
     SyntaxChecker syntaxChecker(const_cast<VM&>(m_vm), m_lexer.get());
 
+    ParserState oldState;
+    if ((SourceParseModeSet(SourceParseMode::ArrowFunctionMode, SourceParseMode::AsyncArrowFunctionMode).contains(mode))) [[unlikely]] {
+        startLocation = tokenLocation();
+        functionInfo.startLine = tokenLine();
+        startColumn = tokenColumn();
+
+        parametersStart = m_token.m_startPosition.offset;
+        functionInfo.startOffset = parametersStart;
+        functionInfo.parametersStartColumn = startColumn;
+
+        if (tryLoadCachedFunction())
+            return true;
+
+        m_parserState.lastFunctionName = lastFunctionName;
+        oldState = internalSaveParserState(context);
+        {
+            // Parse formal parameters with [+Yield] parameterization, in order to ban YieldExpressions
+            // in ArrowFormalParameters, per ES6 #sec-arrow-function-definitions-static-semantics-early-errors.
+            Scope::MaybeParseAsGeneratorFunctionForScope parseAsGeneratorFunction(functionScope.scope(), parentScope->isGeneratorFunction());
+            SetForScope overrideAllowAwait(m_parserState.allowAwait, !parentScope->isAsyncFunction() && !isAsyncFunctionParseMode(mode));
+            parseFunctionParameters(syntaxChecker, functionInfo);
+            propagateError();
+        }
+
+        matchOrFail(ARROWFUNCTION, "Expected a '=>' after arrow function parameter declaration");
+
+        if (m_lexer->hasLineTerminatorBeforeToken()) [[unlikely]]
+            failDueToUnexpectedToken();
+
+        ASSERT(constructorKind == ConstructorKind::None);
+
+        // Check if arrow body start with {. If it true it mean that arrow function is Fat arrow function
+        // and we need use common approach to parse function body
+        next();
+        functionBodyType = match(OPENBRACE) ? ArrowFunctionBodyBlock : ArrowFunctionBodyExpression;
+    } else {
+        // http://ecma-international.org/ecma-262/6.0/#sec-function-definitions
+        // FunctionExpression :
+        //     function BindingIdentifieropt ( FormalParameters ) { FunctionBody }
+        //
+        // FunctionDeclaration[Yield, Default] :
+        //     function BindingIdentifier[?Yield] ( FormalParameters ) { FunctionBody }
+        //     [+Default] function ( FormalParameters ) { FunctionBody }
+        //
+        // GeneratorDeclaration[Yield, Default] :
+        //     function * BindingIdentifier[?Yield] ( FormalParameters[Yield] ) { GeneratorBody }
+        //     [+Default] function * ( FormalParameters[Yield] ) { GeneratorBody }
+        //
+        // GeneratorExpression :
+        //     function * BindingIdentifier[Yield]opt ( FormalParameters[Yield] ) { GeneratorBody }
+        //
+        // The name of FunctionExpression and AsyncFunctionExpression can accept "yield" even in the context of generator.
+        bool canUseYield = !strictMode();
+        if (!(functionDefinitionType == FunctionDefinitionType::Expression && SourceParseModeSet(SourceParseMode::NormalFunctionMode, SourceParseMode::AsyncFunctionMode).contains(mode)))
+            canUseYield &= !parentScope->isGeneratorFunction();
+
+        if (requirements != FunctionNameRequirements::Unnamed) {
+            ASSERT_WITH_MESSAGE(!(requirements == FunctionNameRequirements::None && !functionInfo.name), "When specifying FunctionNameRequirements::None, we need to initialize functionInfo.name with the default value in the caller side.");
+            if (matchSpecIdentifier(canUseYield, functionNameIsAwait)) {
+                functionInfo.name = m_token.m_data.ident;
+                m_parserState.lastFunctionName = functionInfo.name;
+                if (isDisallowedAwaitFunctionNameReason) [[unlikely]]
+                    semanticFailIfTrue(functionDefinitionType == FunctionDefinitionType::Declaration || isAsyncFunctionOrAsyncGeneratorWrapperParseMode(mode), "Cannot declare function named 'await' ", isDisallowedAwaitFunctionNameReason);
+                else if (isAsyncFunctionOrAsyncGeneratorWrapperParseMode(mode) && match(AWAIT) && functionDefinitionType == FunctionDefinitionType::Expression) [[unlikely]]
+                    semanticFail("Cannot declare ", stringForFunctionMode(mode), " named 'await'");
+                else if (isGeneratorOrAsyncGeneratorWrapperParseMode(mode) && match(YIELD) && functionDefinitionType == FunctionDefinitionType::Expression) [[unlikely]]
+                    semanticFail("Cannot declare ", stringForFunctionMode(mode), " named 'yield'");
+                next();
+                if (!nameIsInContainingScope)
+                    failIfTrueIfStrict(functionScope->declareCallee(functionInfo.name) & DeclarationResult::InvalidStrictMode, "'", functionInfo.name->impl(), "' is not a valid ", stringForFunctionMode(mode), " name in strict mode");
+            } else if (requirements == FunctionNameRequirements::Named) [[unlikely]] {
+                if (match(OPENPAREN)) {
+                    semanticFailIfTrue(mode == SourceParseMode::NormalFunctionMode, "Function statements must have a name");
+                    semanticFailIfTrue(mode == SourceParseMode::AsyncFunctionMode, "Async function statements must have a name");
+                }
+                semanticFailureDueToKeyword(stringForFunctionMode(mode), " name");
+                failDueToUnexpectedToken();
+            }
+            ASSERT(functionInfo.name);
+        }
+
+        startLocation = tokenLocation();
+        functionInfo.startLine = tokenLine();
+        startColumn = tokenColumn();
+        functionInfo.parametersStartColumn = startColumn;
+
+        parametersStart = m_token.m_startPosition.offset;
+        functionInfo.startOffset = parametersStart;
+
+        if (tryLoadCachedFunction())
+            return true;
+
+        m_parserState.lastFunctionName = lastFunctionName;
+        oldState = internalSaveParserState(context);
+        {
+            SetForScope overrideAllowAwait(m_parserState.allowAwait, !isAsyncFunctionParseMode(mode));
+            parseFunctionParameters(syntaxChecker, functionInfo);
+            propagateError();
+        }
+        
+        matchOrFail(OPENBRACE, "Expected an opening '{' at the start of a ", stringForFunctionMode(mode), " body");
+
+        // If the code is invoked from function constructor, we need to ensure that parameters are only composed by the string offered as parameters.
+        if (functionConstructorParametersEndPosition) [[unlikely]]
+            semanticFailIfFalse(lastTokenEndPosition().offset == *functionConstructorParametersEndPosition, "Parameters should match arguments offered as parameters in Function constructor");
+        
+        // BytecodeGenerator emits code to throw TypeError when a class constructor is "call"ed.
+        // Set ConstructorKind to None for non-constructor methods of classes.
+    
+        functionBodyType = StandardFunctionBodyBlock;
+    }
+
+    // FIXME: https://bugs.webkit.org/show_bug.cgi?id=156962
+    // This loop collects the set of capture candidates that aren't
+    // part of the set of this function's declared parameters. We will
+    // figure out which parameters are captured for this function when
+    // we actually generate code for it. For now, we just propagate to
+    // our parent scopes which variables we might have closed over that
+    // belong to them. This is necessary for correctness when using
+    // the source provider cache because we can't close over a variable
+    // that we don't claim to close over. The source provider cache must
+    // know this information to properly cache this function.
+    // This might work itself out nicer if we declared a different
+    // Scope struct for the parameters (because they are indeed implemented
+    // as their own scope).
+    UniquedStringImplPtrSet nonLocalCapturesFromParameterExpressions;
+    functionScope->forEachUsedVariable([&] (UniquedStringImpl* impl) {
+        if (!functionScope->hasDeclaredParameter(impl)) {
+            nonLocalCapturesFromParameterExpressions.add(impl);
+            if (TreeBuilder::NeedsFreeVariableInfo)
+                parentScope->addClosedVariableCandidateUnconditionally(impl);
+        }
+        return IterationStatus::Continue;
+    });
+
+    auto performParsingFunctionBody = [&] {
+        return parseFunctionBody(context, syntaxChecker, startLocation, startColumn, functionStart, functionNameStart, parametersStart, constructorKind, expectedSuperBinding, functionBodyType, functionInfo.parameterCount);
+    };
+
+    ImplementationVisibility implementationVisibility = this->implementationVisibility();
+    if (isGeneratorOrAsyncFunctionWrapperParseMode(mode)) {
+        AutoPopScope generatorBodyScope(this, pushScope());
+        SourceParseMode innerParseMode = isAsyncFunctionOrAsyncGeneratorWrapperParseMode(mode) ? getAsyncFunctionBodyParseMode(mode) : SourceParseMode::GeneratorBodyMode;
+
+        generatorBodyScope->setSourceParseMode(innerParseMode);
+        resetImplementationVisibilityIfNeeded();
+
+        generatorBodyScope->setConstructorKind(ConstructorKind::None);
+        generatorBodyScope->setExpectedSuperBinding(expectedSuperBinding);
+
+        // Disallow 'use strict' directives in the implicit inner function if
+        // needed.
+        if (functionScope->hasNonSimpleParameterList())
+            generatorBodyScope->setHasNonSimpleParameterList();
+
+        functionInfo.body = performParsingFunctionBody();
+
+        // When a generator has a "use strict" directive, a generator function wrapping it should be strict mode.
+        if  (generatorBodyScope->strictMode())
+            functionScope->setStrictMode();
+
+        implementationVisibility = generatorBodyScope->implementationVisibility();
+        popScope(generatorBodyScope, TreeBuilder::NeedsFreeVariableInfo);
+    } else
+        functionInfo.body = performParsingFunctionBody();
+    
+    restoreParserState(context, oldState);
+    failIfFalse(functionInfo.body, "Cannot parse the body of this ", stringForFunctionMode(mode));
+    context.setEndOffset(functionInfo.body, m_lexer->currentOffset());
+    if (functionScope->strictMode() && requirements != FunctionNameRequirements::Unnamed) {
+        ASSERT(functionInfo.name);
+        RELEASE_ASSERT(SourceParseModeSet(SourceParseMode::NormalFunctionMode, SourceParseMode::MethodMode, SourceParseMode::ArrowFunctionMode, SourceParseMode::GeneratorBodyMode, SourceParseMode::GeneratorWrapperFunctionMode, SourceParseMode::ClassStaticBlockMode).contains(mode) || isAsyncFunctionOrAsyncGeneratorWrapperParseMode(mode));
+        semanticFailIfTrue(m_vm.propertyNames->arguments == *functionInfo.name, "'", functionInfo.name->impl(), "' is not a valid function name in strict mode");
+        semanticFailIfTrue(m_vm.propertyNames->eval == *functionInfo.name, "'", functionInfo.name->impl(), "' is not a valid function name in strict mode");
+        semanticFailIfTrue(m_vm.propertyNames->yieldKeyword == *functionInfo.name, "'", functionInfo.name->impl(), "' is not a valid function name in strict mode");
+    }
+
+    JSTokenLocation location = m_token.location();
+    functionInfo.endOffset = m_token.m_data.offset;
+    
+    if (functionBodyType == ArrowFunctionBodyExpression) {
+        location = locationBeforeLastToken();
+        functionInfo.endOffset = location.endOffset;
+    } else {
+        recordFunctionEntryLocation(JSTextPosition(startLocation.line, startLocation.startOffset, startLocation.lineStartOffset));
+        recordFunctionLeaveLocation(JSTextPosition(location.line, location.startOffset, location.lineStartOffset));
+    }
+
+    // Cache the tokenizer state and the function scope the first time the function is parsed.
+    // Any future reparsing can then skip the function.
+    // For arrow function is 8 = x=>x + 4 symbols;
+    // For ordinary function is 16  = function(){} + 4 symbols
+    const int minimumSourceLengthToCache = functionBodyType == StandardFunctionBodyBlock ? 16 : 8;
+    std::unique_ptr<SourceProviderCacheItem> newInfo;
+    int sourceLength = functionInfo.endOffset - functionInfo.startOffset;
+    if (TreeBuilder::CanUseFunctionCache && m_functionCache && sourceLength > minimumSourceLengthToCache) {
+        SourceProviderCacheItemCreationParameters parameters;
+        parameters.endFunctionOffset = functionInfo.endOffset;
+        parameters.lastTokenLine = location.line;
+        parameters.lastTokenStartOffset = location.startOffset;
+        parameters.lastTokenEndOffset = location.endOffset;
+        parameters.lastTokenLineStartOffset = location.lineStartOffset;
+        parameters.parameterCount = functionInfo.parameterCount;
+        parameters.constructorKind = constructorKind;
+        parameters.expectedSuperBinding = expectedSuperBinding;
+        parameters.implementationVisibility = implementationVisibility;
+        if (functionBodyType == ArrowFunctionBodyExpression) {
+            parameters.isBodyArrowExpression = true;
+            parameters.tokenType = m_token.m_type;
+        }
+        functionScope->fillParametersForSourceProviderCache(parameters, nonLocalCapturesFromParameterExpressions);
+        newInfo = SourceProviderCacheItem::create(parameters);
+    }
+
+    bool functionScopeWasStrictMode = functionScope->strictMode();
+    
+    popScope(functionScope, TreeBuilder::NeedsFreeVariableInfo);
+    
+    if (functionBodyType != ArrowFunctionBodyExpression)
+        consumeOrFail(CLOSEBRACE, "Expected a closing '}' after a ", stringForFunctionMode(mode), " body");
+    else {
+        // We need to lex the last token again because the last token is lexed under the different context because of the following possibilities.
+        // 1. which may have different strict mode.
+        // 2. which may not build strings for tokens.
+        // But (1) is not possible because we do not recognize the string literal in ArrowFunctionBodyExpression as directive and this is correct in terms of the spec (`value => "use strict"`).
+        // So we only check TreeBuilder's type here.
+        ASSERT_UNUSED(functionScopeWasStrictMode, functionScopeWasStrictMode == currentScope()->strictMode());
+        if constexpr (!std::is_same_v<TreeBuilder, SyntaxChecker>)
+            lexCurrentTokenAgainUnderCurrentContext(context);
+    }
+
+    if (newInfo)
+        m_functionCache->add(functionInfo.startOffset, WTF::move(newInfo));
+    
+    functionInfo.endLine = m_lastTokenLocation.line;
+    return true;
+}
+
+template <typename LexerType>
+template <class TreeBuilder> bool Parser<LexerType>::parseFunctionInfoEager(TreeBuilder& context, FunctionNameRequirements requirements, bool nameIsInContainingScope, ConstructorKind constructorKind, SuperBinding expectedSuperBinding, unsigned functionStart, ParserFunctionInfo<TreeBuilder>& functionInfo, FunctionDefinitionType functionDefinitionType, std::optional<int> functionConstructorParametersEndPosition)
+{
+    auto mode = sourceParseMode();
+    RELEASE_ASSERT(isFunctionParseMode(mode));
+
+    Scope* parentScope = currentScope();
+
+    bool functionNameIsAwait = isPossiblyEscapedAwait(m_token);
+    const char* isDisallowedAwaitFunctionNameReason = functionNameIsAwait && !canUseIdentifierAwait() ? disallowedIdentifierAwaitReason() : nullptr;
+
+    AutoPopScope functionScope(this, pushScope());
+
+    functionScope->setSourceParseMode(mode);
+    resetImplementationVisibilityIfNeeded();
+
+    functionScope->setExpectedSuperBinding(expectedSuperBinding);
+    functionScope->setConstructorKind(constructorKind);
+
+    SetForScope functionParsePhasePoisoner(m_parserState.functionParsePhase, FunctionParsePhase::Body);
+    int functionNameStart = m_token.m_startPosition.offset;
+    const Identifier* lastFunctionName = m_parserState.lastFunctionName;
+    m_parserState.lastFunctionName = nullptr;
+    int parametersStart = -1;
+    JSTokenLocation startLocation;
+    int startColumn = -1;
+    FunctionBodyType functionBodyType;
+
+    auto tryLoadCachedFunction = [&] () -> bool {
+        if (!Options::useSourceProviderCache()) [[unlikely]]
+            return false;
+
+        if (m_debuggerParseData) [[unlikely]]
+            return false;
+
+        ASSERT(parametersStart != -1);
+        ASSERT(startColumn != -1);
+
+        // If we know about this function already, we can use the cached info and skip the parser to the end of the function.
+        if (const SourceProviderCacheItem* cachedInfo = TreeBuilder::CanUseFunctionCache ? findCachedFunctionInfo(parametersStart) : nullptr) {
+            // If we're in a strict context, the cached function info must say it was strict too.
+            ASSERT(!strictMode() || (cachedInfo->lexicallyScopedFeatures() & StrictModeLexicallyScopedFeature));
+            JSTokenLocation endLocation;
+
+            ConstructorKind constructorKind = static_cast<ConstructorKind>(cachedInfo->constructorKind);
+            SuperBinding expectedSuperBinding = static_cast<SuperBinding>(cachedInfo->expectedSuperBinding);
+
+            endLocation.line = cachedInfo->lastTokenLine;
+            endLocation.startOffset = cachedInfo->lastTokenStartOffset;
+            endLocation.lineStartOffset = cachedInfo->lastTokenLineStartOffset;
+            ASSERT(endLocation.startOffset >= endLocation.lineStartOffset);
+
+            bool endColumnIsOnStartLine = endLocation.line == functionInfo.startLine;
+            unsigned currentLineStartOffset = m_lexer->currentLineStartOffset();
+            unsigned bodyEndColumn = endColumnIsOnStartLine ? endLocation.startOffset - currentLineStartOffset : endLocation.startOffset - endLocation.lineStartOffset;
+
+            ASSERT(endLocation.startOffset >= endLocation.lineStartOffset);
+            
+            FunctionBodyType functionBodyType;
+            if (SourceParseModeSet(SourceParseMode::ArrowFunctionMode, SourceParseMode::AsyncArrowFunctionMode).contains(mode)) [[unlikely]]
+                functionBodyType = cachedInfo->isBodyArrowExpression ?  ArrowFunctionBodyExpression : ArrowFunctionBodyBlock;
+            else
+                functionBodyType = StandardFunctionBodyBlock;
+
+            SuperBinding functionSuperBinding = adjustSuperBindingForBaseConstructor(constructorKind, expectedSuperBinding, mode, cachedInfo->needsSuperBinding, cachedInfo->usesEval, cachedInfo->innerArrowFunctionFeatures);
+
+            functionInfo.body = context.createFunctionMetadata(
+                startLocation, endLocation, startColumn, bodyEndColumn, functionStart,
+                functionNameStart, parametersStart, static_cast<ImplementationVisibility>(cachedInfo->implementationVisibility),
+                cachedInfo->lexicallyScopedFeatures(), constructorKind, functionSuperBinding,
+                cachedInfo->parameterCount,
+                mode, functionBodyType == ArrowFunctionBodyExpression);
+            functionInfo.endOffset = cachedInfo->endFunctionOffset;
+            functionInfo.parameterCount = cachedInfo->parameterCount;
+
+            functionScope->restoreFromSourceProviderCache(cachedInfo);
+            popScope(functionScope, TreeBuilder::NeedsFreeVariableInfo);
+            
+            m_token = cachedInfo->endFunctionToken();
+
+            if (endColumnIsOnStartLine)
+                m_token.m_startPosition.lineStartOffset = currentLineStartOffset;
+
+            m_lexer->setOffset(m_token.m_endPosition.offset, m_token.m_startPosition.lineStartOffset);
+            m_lexer->setLineNumber(m_token.m_startPosition.line);
+
+            switch (functionBodyType) {
+            case ArrowFunctionBodyExpression:
+                next();
+                context.setEndOffset(functionInfo.body, m_lexer->currentOffset());
+                break;
+            case ArrowFunctionBodyBlock:
+            case StandardFunctionBodyBlock:
+                context.setEndOffset(functionInfo.body, m_lexer->currentOffset());
+                next();
+                break;
+            }
+            functionInfo.endLine = m_lastTokenLocation.line;
+            return true;
+        }
+
+        return false;
+    };
+
+    SyntaxChecker syntaxChecker(const_cast<VM&>(m_vm), m_lexer.get());
+
     std::optional<EagerIIFEParseScope<LexerType>> eagerIIFEScope;
 
     ParserState oldState;
@@ -2827,10 +3171,7 @@ template <class TreeBuilder> bool Parser<LexerType>::parseFunctionInfo(TreeBuild
         if (tryLoadCachedFunction())
             return true;
 
-        if (m_nextFunctionIsLikelyIIFE) [[unlikely]] {
-            m_nextFunctionIsLikelyIIFE = false;
-            maybeStartEagerIIFE<TreeBuilder>(eagerIIFEScope, mode, functionDefinitionType, parametersStart);
-        }
+        maybeStartEagerIIFE<TreeBuilder>(eagerIIFEScope, mode, functionDefinitionType, parametersStart);
 
         m_parserState.lastFunctionName = lastFunctionName;
         oldState = internalSaveParserState(context);
@@ -5211,7 +5552,11 @@ template <class TreeBuilder> TreeExpression Parser<LexerType>::parseFunctionExpr
     ConstructorKind constructorKind = currentScope()->isGlobalCode() ? m_constructorKindForTopLevelFunctionExpressions : ConstructorKind::None;
     SuperBinding expectedSuperBinding = constructorKind == ConstructorKind::Extends ? SuperBinding::Needed : SuperBinding::NotNeeded;
 
-    failIfFalse((parseFunctionInfo(context, FunctionNameRequirements::None, false, constructorKind, expectedSuperBinding, functionStart, functionInfo, FunctionDefinitionType::Expression, std::nullopt)), "Cannot parse function expression");
+    if (m_nextFunctionIsLikelyIIFE) [[unlikely]] {
+        m_nextFunctionIsLikelyIIFE = false;
+        failIfFalse((parseFunctionInfoEager(context, FunctionNameRequirements::None, false, constructorKind, expectedSuperBinding, functionStart, functionInfo, FunctionDefinitionType::Expression, std::nullopt)), "Cannot parse function expression");
+    } else
+        failIfFalse((parseFunctionInfo(context, FunctionNameRequirements::None, false, constructorKind, expectedSuperBinding, functionStart, functionInfo, FunctionDefinitionType::Expression, std::nullopt)), "Cannot parse function expression");
     return context.createFunctionExpr(location, functionInfo);
 }
 

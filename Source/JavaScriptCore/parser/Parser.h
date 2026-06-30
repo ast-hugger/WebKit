@@ -1930,6 +1930,7 @@ private:
 
     enum class FunctionDefinitionType { Expression, Declaration, Method };
     template <class TreeBuilder> NEVER_INLINE bool parseFunctionInfo(TreeBuilder&, FunctionNameRequirements, bool nameIsInContainingScope, ConstructorKind, SuperBinding, unsigned functionStart, ParserFunctionInfo<TreeBuilder>&, FunctionDefinitionType, std::optional<int> functionConstructorParametersEndPosition = std::nullopt);
+    template <class TreeBuilder> NEVER_INLINE bool parseFunctionInfoEager(TreeBuilder&, FunctionNameRequirements, bool nameIsInContainingScope, ConstructorKind, SuperBinding, unsigned functionStart, ParserFunctionInfo<TreeBuilder>&, FunctionDefinitionType, std::optional<int> functionConstructorParametersEndPosition);
 
     struct EagerIIFEScopeData {
         CodeFeatures features { 0 };
