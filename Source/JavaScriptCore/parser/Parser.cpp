@@ -2618,8 +2618,6 @@ template <class TreeBuilder> typename TreeBuilder::FormalParameterList Parser<Le
 template <typename LexerType>
 template <class TreeBuilder> bool Parser<LexerType>::parseFunctionInfo(TreeBuilder& context, FunctionNameRequirements requirements, bool nameIsInContainingScope, ConstructorKind constructorKind, SuperBinding expectedSuperBinding, unsigned functionStart, ParserFunctionInfo<TreeBuilder>& functionInfo, FunctionDefinitionType functionDefinitionType, std::optional<int> functionConstructorParametersEndPosition)
 {
-    const bool isLikelyIIFE = m_nextFunctionIsLikelyIIFE;
-    m_nextFunctionIsLikelyIIFE = false;
     auto mode = sourceParseMode();
     RELEASE_ASSERT(isFunctionParseMode(mode));
 
@@ -2723,7 +2721,7 @@ template <class TreeBuilder> bool Parser<LexerType>::parseFunctionInfo(TreeBuild
 
     SyntaxChecker syntaxChecker(const_cast<VM&>(m_vm), m_lexer.get());
 
-    std::optional<EagerIIFEParseScope<LexerType>> eagerIIFEParseScope;
+    std::optional<EagerIIFEParseScope<LexerType>> eagerIIFEScope;
 
     ParserState oldState;
     if ((SourceParseModeSet(SourceParseMode::ArrowFunctionMode, SourceParseMode::AsyncArrowFunctionMode).contains(mode))) [[unlikely]] {
@@ -2818,7 +2816,6 @@ template <class TreeBuilder> bool Parser<LexerType>::parseFunctionInfo(TreeBuild
         if (m_iifeParseState
             && m_iifeParseState->isInUse()
             && tokenLineStart() <= m_iifeParseState->startOffset()) [[unlikely]] {
-
             int adjustment = m_iifeParseState->startOffset() - tokenLineStart();
             startColumn -= adjustment;
         }
@@ -2830,17 +2827,9 @@ template <class TreeBuilder> bool Parser<LexerType>::parseFunctionInfo(TreeBuild
         if (tryLoadCachedFunction())
             return true;
 
-        // Detect IIFE candidates and set up eager AST building.
-        // Because we are past tryLoadCachedFunction(), we know the candidate hasn't been syntax-checked yet.
-        if constexpr (std::is_same_v<TreeBuilder, ASTBuilder>) {
-            const bool shouldEagerlyBuildAST = isLikelyIIFE
-                && Options::useEagerIIFEParsing()
-                && mode == SourceParseMode::NormalFunctionMode
-                && functionDefinitionType == FunctionDefinitionType::Expression
-                && !m_debuggerParseData
-                && m_eagerIIFERegistry;
-            if (shouldEagerlyBuildAST) [[unlikely]]
-                eagerIIFEParseScope.emplace(this, parametersStart);
+        if (m_nextFunctionIsLikelyIIFE) [[unlikely]] {
+            m_nextFunctionIsLikelyIIFE = false;
+            maybeStartEagerIIFE<TreeBuilder>(eagerIIFEScope, mode, functionDefinitionType, parametersStart);
         }
 
         m_parserState.lastFunctionName = lastFunctionName;
@@ -2970,53 +2959,11 @@ template <class TreeBuilder> bool Parser<LexerType>::parseFunctionInfo(TreeBuild
 
     bool functionScopeWasStrictMode = functionScope->strictMode();
 
-    const bool hasEagerlyBuiltAST = m_iifeParseState && m_iifeParseState->sourceElements();
-    ASSERT_IMPLIES(hasEagerlyBuiltAST, m_iifeParseState->functionParameters());
-
-    // Collect IIFE scope data before popScope destroys scope state.
-    CodeFeatures iifeFeatures = 0;
-    int iifeNumConstants = 0;
-    LexicallyScopedFeatures iifeLexFeatures = NoLexicallyScopedFeatures;
-    InnerArrowFunctionCodeFeatures iifeInnerFeatures = 0;
-    VariableEnvironment iifeVarDeclarations;
-    if (hasEagerlyBuiltAST) [[unlikely]] {
-        // Finalize sloppy-mode function hoisting before collecting scope data.
-        // This adds hoisted function names to declaredVariables and sets
-        // isSloppyModeHoistedFunction on the FunctionMetadataNodes, matching
-        // what parseInner() does during a normal reparse.
-        if (!functionScope->strictMode()) {
-            functionScope->finalizeSloppyModeFunctionHoisting();
-            // Clear candidates so they don't bubble up to outer scopes
-            // when popScope runs — the metadata nodes belong to the cached
-            // FunctionNode and must not be mutated by outer finalization.
-            functionScope->clearSloppyModeFunctionHoistingCandidates();
-        }
-
-        iifeFeatures = collectCodeFeatures(m_iifeParseState->features(), functionScope.scope());
-        iifeNumConstants = m_iifeParseState->numConstants();
-        iifeLexFeatures = functionScope->lexicallyScopedFeatures();
-        iifeInnerFeatures = functionScope->innerArrowFunctionFeatures();
-
-        // iifeVarDeclarations is captured by COPY here, before popScope at line 3005.
-        // The non-eager path in parseInner instead takes declaredVariables by
-        // REFERENCE and marks captures in-place — popScope can then observe the
-        // marked variables. The eager path can't do the same because popScope
-        // destructs the scope (its m_scopeStack slot is removed), so we have to
-        // snapshot before pop. Today's popScope chain (finalizeLexicalEnvironment,
-        // collectFreeVariables, bubbleSloppyModeFunctionHoistingCandidates, etc.)
-        // does not mutate the popped scope's m_declaredVariables, so the copy and
-        // the reference end up with identical content. If a future change ever
-        // makes popScope touch m_declaredVariables of the popped scope, this copy
-        // will silently fall out of sync with the non-eager path and the cached
-        // FunctionNode will diverge.
-        iifeVarDeclarations = functionScope->declaredVariables();
-        IdentifierSet capturedVariables;
-        functionScope->getCapturedVars(capturedVariables);
-        for (auto& entry : capturedVariables)
-            iifeVarDeclarations.markVariableAsCaptured(entry.get());
-    }
-
-    auto [lexicalEnvironment, functionDeclarations] = popScope(functionScope, TreeBuilder::NeedsFreeVariableInfo);
+    if (m_iifeParseState && m_iifeParseState->sourceElements()) [[unlikely]] {
+        ASSERT(m_iifeParseState->functionParameters());
+        popScopeAndBuildEagerFunctionNode(functionScope, functionInfo, startLocation, startColumn);
+    } else
+        popScope(functionScope, TreeBuilder::NeedsFreeVariableInfo);
 
     if (functionBodyType != ArrowFunctionBodyExpression)
         consumeOrFail(CLOSEBRACE, "Expected a closing '}' after a ", stringForFunctionMode(mode), " body");
@@ -3034,45 +2981,112 @@ template <class TreeBuilder> bool Parser<LexerType>::parseFunctionInfo(TreeBuild
     if (newInfo)
         m_functionCache->add(functionInfo.startOffset, WTF::move(newInfo));
 
-    if (hasEagerlyBuiltAST) [[unlikely]] {
-        SourceCode functionSource = m_source->subExpression(
-            functionInfo.startOffset, functionInfo.endOffset,
-            functionInfo.startLine, functionInfo.parametersStartColumn);
-
-        JSTokenLocation endLocation;
-        endLocation.line = m_lastTokenLocation.line;
-        endLocation.startOffset = functionInfo.endOffset;
-        endLocation.lineStartOffset = m_lastTokenLocation.lineStartOffset;
-
-        auto functionNode = makeUnique<FunctionNode>(
-            *m_currentArena,
-            startLocation,
-            endLocation,
-            startColumn,
-            tokenColumn(),
-            m_iifeParseState->sourceElements(),
-            WTF::move(iifeVarDeclarations),
-            WTF::move(functionDeclarations),
-            WTF::move(lexicalEnvironment),
-            m_iifeParseState->functionParameters(),
-            functionSource,
-            iifeFeatures,
-            iifeLexFeatures,
-            iifeInnerFeatures,
-            iifeNumConstants,
-            nullptr /* moduleScopeData */);
-
-        functionNode->setLoc(functionInfo.startLine, m_lastTokenLocation.line, m_lastTokenLocation.endOffset, m_lastTokenLocation.lineStartOffset);
-        functionNode->setEndOffset(functionInfo.endOffset);
-        functionNode->finishParsing(
-            functionInfo.name ? *functionInfo.name : m_vm.propertyNames->nullIdentifier,
-            FunctionMode::FunctionExpression);
-
-        m_eagerIIFERegistry->add(functionInfo.startOffset, WTF::move(functionNode));
-    }
-    
     functionInfo.endLine = m_lastTokenLocation.line;
     return true;
+}
+
+template <typename LexerType>
+template <class TreeBuilder>
+NEVER_INLINE void Parser<LexerType>::maybeStartEagerIIFE(std::optional<EagerIIFEParseScope<LexerType>>& eagerIIFEScope, SourceParseMode mode, FunctionDefinitionType functionDefinitionType, unsigned parametersStart)
+{
+    // Caller has already checked m_nextFunctionIsLikelyIIFE and cleared it.
+    if constexpr (std::is_same_v<TreeBuilder, ASTBuilder>) {
+        if (Options::useEagerIIFEParsing()
+            && mode == SourceParseMode::NormalFunctionMode
+            && functionDefinitionType == FunctionDefinitionType::Expression
+            && !m_debuggerParseData
+            && m_eagerIIFERegistry) [[unlikely]]
+            eagerIIFEScope.emplace(this, parametersStart);
+    }
+}
+
+template <typename LexerType>
+NEVER_INLINE void Parser<LexerType>::collectIIFEScopeData(AutoPopScope& functionScope, EagerIIFEScopeData& data)
+{
+    // Finalize sloppy-mode function hoisting before collecting scope data.
+    // This adds hoisted function names to declaredVariables and sets
+    // isSloppyModeHoistedFunction on the FunctionMetadataNodes, matching
+    // what parseInner() does during a normal reparse.
+    if (!functionScope->strictMode()) {
+        functionScope->finalizeSloppyModeFunctionHoisting();
+        // Clear candidates so they don't bubble up to outer scopes
+        // when popScope runs — the metadata nodes belong to the cached
+        // FunctionNode and must not be mutated by outer finalization.
+        functionScope->clearSloppyModeFunctionHoistingCandidates();
+    }
+
+    data.features = collectCodeFeatures(m_iifeParseState->features(), functionScope.scope());
+    data.numConstants = m_iifeParseState->numConstants();
+    data.lexFeatures = functionScope->lexicallyScopedFeatures();
+    data.innerFeatures = functionScope->innerArrowFunctionFeatures();
+
+    // varDeclarations is captured by COPY here, before popScope by the caller.
+    // The non-eager path in parseInner instead takes declaredVariables by
+    // REFERENCE and marks captures in-place — popScope can then observe the
+    // marked variables. The eager path can't do the same because popScope
+    // destructs the scope (its m_scopeStack slot is removed), so we have to
+    // snapshot before pop. Today's popScope chain (finalizeLexicalEnvironment,
+    // collectFreeVariables, bubbleSloppyModeFunctionHoistingCandidates, etc.)
+    // does not mutate the popped scope's m_declaredVariables, so the copy and
+    // the reference end up with identical content. If a future change ever
+    // makes popScope touch m_declaredVariables of the popped scope, this copy
+    // will silently fall out of sync with the non-eager path and the cached
+    // FunctionNode will diverge.
+    data.varDeclarations = functionScope->declaredVariables();
+    IdentifierSet capturedVariables;
+    functionScope->getCapturedVars(capturedVariables);
+    for (auto& entry : capturedVariables)
+        data.varDeclarations.markVariableAsCaptured(entry.get());
+}
+
+template <typename LexerType>
+template <class TreeBuilder>
+NEVER_INLINE void Parser<LexerType>::buildAndRegisterEagerFunctionNode(ParserFunctionInfo<TreeBuilder>& functionInfo, const JSTokenLocation& startLocation, int startColumn, EagerIIFEScopeData&& data, VariableEnvironment&& lexicalEnvironment, DeclarationStacks::FunctionStack&& functionDeclarations)
+{
+    SourceCode functionSource = m_source->subExpression(
+        functionInfo.startOffset, functionInfo.endOffset,
+        functionInfo.startLine, functionInfo.parametersStartColumn);
+
+    JSTokenLocation endLocation;
+    endLocation.line = m_lastTokenLocation.line;
+    endLocation.startOffset = functionInfo.endOffset;
+    endLocation.lineStartOffset = m_lastTokenLocation.lineStartOffset;
+
+    auto functionNode = makeUnique<FunctionNode>(
+        *m_currentArena,
+        startLocation,
+        endLocation,
+        startColumn,
+        tokenColumn(),
+        m_iifeParseState->sourceElements(),
+        WTF::move(data.varDeclarations),
+        WTF::move(functionDeclarations),
+        WTF::move(lexicalEnvironment),
+        m_iifeParseState->functionParameters(),
+        functionSource,
+        data.features,
+        data.lexFeatures,
+        data.innerFeatures,
+        data.numConstants,
+        nullptr /* moduleScopeData */);
+
+    functionNode->setLoc(functionInfo.startLine, m_lastTokenLocation.line, m_lastTokenLocation.endOffset, m_lastTokenLocation.lineStartOffset);
+    functionNode->setEndOffset(functionInfo.endOffset);
+    functionNode->finishParsing(
+        functionInfo.name ? *functionInfo.name : m_vm.propertyNames->nullIdentifier,
+        FunctionMode::FunctionExpression);
+
+    m_eagerIIFERegistry->add(functionInfo.startOffset, WTF::move(functionNode));
+}
+
+template <typename LexerType>
+template <class TreeBuilder>
+NEVER_INLINE void Parser<LexerType>::popScopeAndBuildEagerFunctionNode(AutoPopScope& functionScope, ParserFunctionInfo<TreeBuilder>& functionInfo, const JSTokenLocation& startLocation, int startColumn)
+{
+    EagerIIFEScopeData data;
+    collectIIFEScopeData(functionScope, data);
+    auto [lexicalEnvironment, functionDeclarations] = popScope(functionScope, TreeBuilder::NeedsFreeVariableInfo);
+    buildAndRegisterEagerFunctionNode(functionInfo, startLocation, startColumn, WTF::move(data), WTF::move(lexicalEnvironment), WTF::move(functionDeclarations));
 }
 
 static NO_RETURN_DUE_TO_CRASH FunctionMetadataNode* NODELETE getMetadata(ParserFunctionInfo<SyntaxChecker>&) { RELEASE_ASSERT_NOT_REACHED(); }

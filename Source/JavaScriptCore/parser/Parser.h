@@ -1930,6 +1930,18 @@ private:
 
     enum class FunctionDefinitionType { Expression, Declaration, Method };
     template <class TreeBuilder> NEVER_INLINE bool parseFunctionInfo(TreeBuilder&, FunctionNameRequirements, bool nameIsInContainingScope, ConstructorKind, SuperBinding, unsigned functionStart, ParserFunctionInfo<TreeBuilder>&, FunctionDefinitionType, std::optional<int> functionConstructorParametersEndPosition = std::nullopt);
+
+    struct EagerIIFEScopeData {
+        CodeFeatures features { 0 };
+        int numConstants { 0 };
+        LexicallyScopedFeatures lexFeatures { NoLexicallyScopedFeatures };
+        InnerArrowFunctionCodeFeatures innerFeatures { 0 };
+        VariableEnvironment varDeclarations;
+    };
+    NEVER_INLINE void collectIIFEScopeData(AutoPopScope& functionScope, EagerIIFEScopeData& data);
+    template <class TreeBuilder> NEVER_INLINE void buildAndRegisterEagerFunctionNode(ParserFunctionInfo<TreeBuilder>& functionInfo, const JSTokenLocation& startLocation, int startColumn, EagerIIFEScopeData&& data, VariableEnvironment&& lexicalEnvironment, DeclarationStacks::FunctionStack&& functionDeclarations);
+    template <class TreeBuilder> NEVER_INLINE void popScopeAndBuildEagerFunctionNode(AutoPopScope& functionScope, ParserFunctionInfo<TreeBuilder>& functionInfo, const JSTokenLocation& startLocation, int startColumn);
+    template <class TreeBuilder> NEVER_INLINE void maybeStartEagerIIFE(std::optional<EagerIIFEParseScope<LexerType>>& eagerIIFEScope, SourceParseMode mode, FunctionDefinitionType functionDefinitionType, unsigned parametersStart);
     [[nodiscard]] CodeFeatures collectCodeFeatures(CodeFeatures, Scope*);
     
     template <class TreeBuilder> ALWAYS_INLINE bool isArrowFunctionParameters(TreeBuilder&);
