@@ -78,7 +78,6 @@ public:
     {
         JSToken token;
         token.m_type = isBodyArrowExpression ? static_cast<JSTokenType>(tokenType) : CLOSEBRACE;
-        token.m_data.offset = lastTokenStartOffset;
         token.m_startPosition.offset = lastTokenStartOffset;
         token.m_startPosition.line = lastTokenLine;
         token.m_startPosition.lineStartOffset = lastTokenLineStartOffset;

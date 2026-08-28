@@ -2196,10 +2196,6 @@ start:
     case  61 /* 61 = = CharacterEqual */: {
         if (peek(1) == '>') {
             token = ARROWFUNCTION;
-            tokenData->line = lineNumber();
-            tokenData->offset = currentOffset();
-            tokenData->lineStartOffset = currentLineStartOffset();
-            ASSERT(tokenData->offset >= tokenData->lineStartOffset);
             shift();
             shift();
             break;
@@ -2419,9 +2415,6 @@ start:
 
     case  40 /* 40 = ( CharacterOpenParen */: {
         token = OPENPAREN;
-        tokenData->line = lineNumber();
-        tokenData->offset = currentOffset();
-        tokenData->lineStartOffset = currentLineStartOffset();
         shift();
         break;
     }
@@ -2496,20 +2489,12 @@ start:
     }
 
     case 123 /* 123 = { CharacterOpenBrace */: {
-        tokenData->line = lineNumber();
-        tokenData->offset = currentOffset();
-        tokenData->lineStartOffset = currentLineStartOffset();
-        ASSERT(tokenData->offset >= tokenData->lineStartOffset);
         shift();
         token = OPENBRACE;
         break;
     }
 
     case 125 /* 125 = } CharacterCloseBrace */: {
-        tokenData->line = lineNumber();
-        tokenData->offset = currentOffset();
-        tokenData->lineStartOffset = currentLineStartOffset();
-        ASSERT(tokenData->offset >= tokenData->lineStartOffset);
         shift();
         token = CLOSEBRACE;
         break;

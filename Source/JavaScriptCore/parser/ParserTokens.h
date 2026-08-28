@@ -245,11 +245,6 @@ union JSTokenData {
         const Identifier* raw;
         bool isTail;
     };
-    struct {
-        uint32_t line;
-        uint32_t offset;
-        uint32_t lineStartOffset;
-    };
     double doubleValue;
     struct {
         const Identifier* ident;

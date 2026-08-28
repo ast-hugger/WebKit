@@ -557,7 +557,10 @@ template <class TreeBuilder> TreeSourceElements Parser<LexerType>::parseGenerato
     info.body = context.createFunctionMetadata(startLocation, tokenLocation(), startColumn, tokenColumn(), functionStart, functionNameStart, parametersStart, implementationVisibility(), lexicallyScopedFeatures(), ConstructorKind::None, m_superBinding, info.parameterCount, SourceParseMode::GeneratorBodyMode, false);
 
     info.endLine = tokenLine();
-    info.endOffset = m_token.m_data.offset;
+    // The body of a generator or async pseudo-function is parsed as its own source, so the
+    // current token here is EOF, not the brace that closed the body. The wanted offset is
+    // that closing brace, which is the *previous* token.
+    info.endOffset = m_lastTokenLocation.startOffset;
     info.parametersStartColumn = startColumn;
 
     auto functionExpr = context.createGeneratorFunctionBody(startLocation, info, name);
@@ -646,7 +649,10 @@ template <class TreeBuilder> TreeSourceElements Parser<LexerType>::parseAsyncFun
     info.body = context.createFunctionMetadata(startLocation, tokenLocation(), startColumn, tokenColumn(), functionStart, functionNameStart, parametersStart, implementationVisibility, lexicallyScopedFeatures(), ConstructorKind::None, m_superBinding, info.parameterCount, sourceParseMode(), isArrowFunctionBodyExpression);
 
     info.endLine = tokenLine();
-    info.endOffset = isArrowFunctionBodyExpression ? tokenLocation().endOffset : m_token.m_data.offset;
+    // The body of a generator or async pseudo-function is parsed as its own source, so the
+    // current token here is EOF, not the brace that closed the body. The wanted offset is
+    // that closing brace, which is the *previous* token.
+    info.endOffset = isArrowFunctionBodyExpression ? tokenLocation().endOffset : static_cast<int>(m_lastTokenLocation.startOffset);
     info.parametersStartColumn = startColumn;
 
     auto functionExpr = context.createAsyncFunctionBody(startLocation, info, bodyParseMode, calleeName);
@@ -700,7 +706,10 @@ template <class TreeBuilder> TreeSourceElements Parser<LexerType>::parseAsyncGen
     info.body = context.createFunctionMetadata(startLocation, tokenLocation(), startColumn, tokenColumn(), functionStart, functionNameStart, parametersStart, implementationVisibility(), lexicallyScopedFeatures(), ConstructorKind::None, m_superBinding, info.parameterCount, parseMode, isArrowFunctionBodyExpression);
 
     info.endLine = tokenLine();
-    info.endOffset = isArrowFunctionBodyExpression ? tokenLocation().endOffset : m_token.m_data.offset;
+    // The body of a generator or async pseudo-function is parsed as its own source, so the
+    // current token here is EOF, not the brace that closed the body. The wanted offset is
+    // that closing brace, which is the *previous* token.
+    info.endOffset = isArrowFunctionBodyExpression ? tokenLocation().endOffset : static_cast<int>(m_lastTokenLocation.startOffset);
     info.parametersStartColumn = startColumn;
 
     auto functionExpr = context.createAsyncFunctionBody(startLocation, info, parseMode, calleeName);
@@ -2092,13 +2101,13 @@ template <class TreeBuilder> TreeStatement Parser<LexerType>::parseBlockStatemen
         lexicalScope.setIsValid(newScope, this);
     }
     JSTokenLocation location(tokenLocation());
-    int startOffset = m_token.m_data.offset;
+    int startOffset = m_token.m_startPosition.offset;
     int start = tokenLine();
     VariableEnvironment lexicalEnvironment;
     DeclarationStacks::FunctionStack functionStack;
     next();
     if (match(CLOSEBRACE)) {
-        int endOffset = m_token.m_data.offset;
+        int endOffset = m_token.m_startPosition.offset;
         next();
         if (shouldPushLexicalScope)
             std::tie(lexicalEnvironment, functionStack) = popScope(lexicalScope, TreeBuilder::NeedsFreeVariableInfo);
@@ -2110,7 +2119,7 @@ template <class TreeBuilder> TreeStatement Parser<LexerType>::parseBlockStatemen
     TreeSourceElements subtree = parseSourceElements(context, DontCheckForStrictMode);
     failIfFalse(subtree, "Cannot parse the body of the block statement");
     matchOrFail(CLOSEBRACE, "Expected a closing '}' at the end of a block statement");
-    int endOffset = m_token.m_data.offset;
+    int endOffset = m_token.m_startPosition.offset;
     next();
     if (shouldPushLexicalScope)
         std::tie(lexicalEnvironment, functionStack) = popScope(lexicalScope, TreeBuilder::NeedsFreeVariableInfo);
@@ -2855,7 +2864,7 @@ template <class TreeBuilder> bool Parser<LexerType>::parseFunctionInfo(TreeBuild
     }
 
     JSTokenLocation location = m_token.location();
-    functionInfo.endOffset = m_token.m_data.offset;
+    functionInfo.endOffset = m_token.m_startPosition.offset;
     
     if (functionBodyType == ArrowFunctionBodyExpression) {
         location = locationBeforeLastToken();
