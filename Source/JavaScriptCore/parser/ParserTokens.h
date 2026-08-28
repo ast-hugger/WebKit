@@ -263,6 +263,23 @@ union JSTokenData {
 struct JSTokenLocation {
     JSTokenLocation() = default;
 
+    // A JSTokenLocation has one line for both of its offsets, so this reports the line the
+    // token *opened* on. For a token that contains a line terminator that is the wrong line,
+    // and the column a consumer derives from it is measured against the wrong line start --
+    // inflated rather than merely wrong, since it counts the intervening lines' characters.
+    //
+    // This predates the offset-only token end: JSToken::location() has always filled `line`
+    // from the start position, so every consumer reached through
+    // Parser::lastTokenEndPosition() has always seen the borrowed line. Those consumers are
+    // more numerous than they look, because several read an end that was stored as a divot
+    // elsewhere -- ThrowNode and WithNode, BindingNode and AssignmentElementNode, and the call
+    // machinery (FunctionCallValueNode, FunctionCallDotNode, NewExprNode, ImportNode,
+    // TaggedTemplateNode), which deliberately puts its divot at the end of the callee.
+    //
+    // The fix is to stop storing lines and derive them from the source on demand; see
+    // ~/repos/logbook/2026-08-28-parser-lazy-source-positions/design.md, sections 3.1 and 4.2.
+    JSTextPosition endPosition() const { return JSTextPosition(line, endOffset, lineStartOffset); }
+
     int line { 0 };
     unsigned lineStartOffset { 0 };
     unsigned startOffset { 0 };
@@ -273,7 +290,7 @@ struct JSToken {
     JSTokenType m_type { ERRORTOK };
     JSTokenData m_data { { nullptr, nullptr, false } };
     JSTextPosition m_startPosition;
-    JSTextPosition m_endPosition;
+    int m_endOffset { -1 };
 
     JSTokenLocation location() const
     {
@@ -281,7 +298,7 @@ struct JSToken {
         result.line = m_startPosition.line;
         result.lineStartOffset = m_startPosition.lineStartOffset;
         result.startOffset = m_startPosition.offset;
-        result.endOffset = m_endPosition.offset;
+        result.endOffset = m_endOffset;
         return result;
     }
 

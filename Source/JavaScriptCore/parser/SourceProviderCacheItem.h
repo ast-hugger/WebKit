@@ -81,7 +81,7 @@ public:
         token.m_startPosition.offset = lastTokenStartOffset;
         token.m_startPosition.line = lastTokenLine;
         token.m_startPosition.lineStartOffset = lastTokenLineStartOffset;
-        token.m_endPosition.offset = lastTokenEndOffset;
+        token.m_endOffset = lastTokenEndOffset;
         // token.m_location.sourceOffset is initialized once by the client. So,
         // we do not need to set it here.
         return token;

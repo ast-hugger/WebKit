@@ -571,7 +571,7 @@ void Lexer<T>::setCode(const SourceCode& source, ParserArena* arena)
     m_codeEnd = m_codeStart + source.endOffset();
     m_error = false;
     m_atLineStart = true;
-    m_lineStart = m_code;
+    m_lineStartOffset = source.startOffset();
     m_lexErrorMessage = String();
     m_sourceURLDirective = String();
     m_sourceMappingURLDirective = String();
@@ -726,7 +726,7 @@ void Lexer<T>::shiftLineTerminator()
         shift();
 
     ++m_lineNumber;
-    m_lineStart = m_code;
+    m_lineStartOffset = currentOffset();
 }
 
 static ALWAYS_INLINE bool isRestrKeyword(JSTokenType token)
@@ -2067,12 +2067,6 @@ bool Lexer<T>::nextTokenIsColon()
 }
 
 template <typename T>
-void Lexer<T>::fillTokenInfo(JSToken* tokenRecord, JSTextPosition endPosition)
-{
-    tokenRecord->m_endPosition = endPosition;
-}
-
-template <typename T>
 NEVER_INLINE std::optional<JSTokenType> Lexer<T>::scanSingleLineComment(JSToken* tokenRecord, bool checkForDirectives)
 {
     if (checkForDirectives) {
@@ -2084,7 +2078,7 @@ NEVER_INLINE std::optional<JSTokenType> Lexer<T>::scanSingleLineComment(JSToken*
         }
     }
 
-    auto endPosition = currentPosition();
+    auto endOffset = currentOffset();
 
     using UnsignedType = SameSizeUnsignedInteger<T>;
     constexpr auto lineFeedMask = SIMD::splat<UnsignedType>('\n');
@@ -2112,7 +2106,7 @@ NEVER_INLINE std::optional<JSTokenType> Lexer<T>::scanSingleLineComment(JSToken*
     m_code = SIMD::find(std::span { currentSourcePtr(), m_codeEnd }, vectorMatch, scalarMatch);
     if (m_code == m_codeEnd) {
         m_current = 0;
-        fillTokenInfo(tokenRecord, endPosition);
+        tokenRecord->m_endOffset = endOffset;
         return EOFTOK;
     }
 
@@ -2125,7 +2119,7 @@ NEVER_INLINE std::optional<JSTokenType> Lexer<T>::scanSingleLineComment(JSToken*
     if (!isRestrKeyword(tokenRecord->m_type))
         return std::nullopt;
 
-    fillTokenInfo(tokenRecord, endPosition);
+    tokenRecord->m_endOffset = endOffset;
     return SEMICOLON;
 }
 
@@ -2337,7 +2331,7 @@ start:
             m_lexErrorMessage = "Multiline comment was not closed properly"_s;
             token = UNTERMINATED_MULTILINE_COMMENT_ERRORTOK;
             m_error = true;
-            fillTokenInfo(tokenRecord, currentPosition());
+            tokenRecord->m_endOffset = currentOffset();
             return token;
         }
         if (m_current == '=') {
@@ -2780,13 +2774,13 @@ start:
         if (result != StringParsedSuccessfully) [[unlikely]] {
             token = result == StringUnterminated ? UNTERMINATED_STRING_LITERAL_ERRORTOK : INVALID_STRING_LITERAL_ERRORTOK;
             m_error = true;
-            fillTokenInfo(tokenRecord, currentPosition());
+            tokenRecord->m_endOffset = currentOffset();
             return token;
         }
         shift();
         token = STRING;
         m_atLineStart = false;
-        fillTokenInfo(tokenRecord, currentPosition());
+        tokenRecord->m_endOffset = currentOffset();
         return token;
     }
 
@@ -3101,7 +3095,7 @@ start:
     goto returnToken;
 
 returnToken:
-    fillTokenInfo(tokenRecord, currentPosition());
+    tokenRecord->m_endOffset = currentOffset();
     return token;
 
 invalidCharacter:
@@ -3111,7 +3105,7 @@ invalidCharacter:
 
 returnError:
     m_error = true;
-    fillTokenInfo(tokenRecord, currentPosition());
+    tokenRecord->m_endOffset = currentOffset();
     RELEASE_ASSERT(token & CanBeErrorTokenFlag);
     return token;
 }
@@ -3149,7 +3143,7 @@ JSTokenType Lexer<T>::scanRegExp(JSToken* tokenRecord, char16_t patternPrefix)
         if (isLineTerminator(m_current) || atEnd()) {
             m_buffer16.shrink(0);
             JSTokenType token = UNTERMINATED_REGEXP_LITERAL_ERRORTOK;
-            fillTokenInfo(tokenRecord, currentPosition());
+            tokenRecord->m_endOffset = currentOffset();
             m_error = true;
             m_lexErrorMessage = makeString("Unterminated regular expression literal '"_s, getToken(*tokenRecord), '\'');
             return token;
@@ -3198,7 +3192,7 @@ JSTokenType Lexer<T>::scanRegExp(JSToken* tokenRecord, char16_t patternPrefix)
     if (!isLatin1(m_current) && !isWhiteSpace(m_current) && !isLineTerminator(m_current)) [[unlikely]] {
         m_buffer8.shrink(0);
         JSTokenType token = INVALID_IDENTIFIER_UNICODE_ERRORTOK;
-        fillTokenInfo(tokenRecord, currentPosition());
+        tokenRecord->m_endOffset = currentOffset();
         m_error = true;
         String codePoint = String::fromCodePoint(currentCodePoint());
         if (!codePoint)
@@ -3214,7 +3208,7 @@ JSTokenType Lexer<T>::scanRegExp(JSToken* tokenRecord, char16_t patternPrefix)
     m_atLineStart = false;
 
     JSTokenType token = REGEXP;
-    fillTokenInfo(tokenRecord, currentPosition());
+    tokenRecord->m_endOffset = currentOffset();
     return token;
 }
 
@@ -3237,7 +3231,7 @@ JSTokenType Lexer<T>::scanTemplateString(JSToken* tokenRecord, RawStringsBuildMo
 
     // Since TemplateString always ends with ` or }, m_atLineStart always becomes false.
     m_atLineStart = false;
-    fillTokenInfo(tokenRecord, currentPosition());
+    tokenRecord->m_endOffset = currentOffset();
     return token;
 }
 

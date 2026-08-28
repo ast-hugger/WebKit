@@ -1667,11 +1667,24 @@ private:
         return tokenStart() - tokenLineStart();
     }
 
-    ALWAYS_INLINE const JSTextPosition& tokenEndPosition()
+    // A token's end offset paired with the line the token *started* on. JSToken does not offer
+    // this: as a method there it would read as "the token's end position", which for a token
+    // containing a line terminator it is not. Naming the line here forces each caller to be a
+    // caller of something whose approximation is visible.
+    //
+    // Callers fall into two groups, audited in the logbook at
+    // 2026-08-26-perf-octane-code-load/item-a-token-position-bookkeeping.md: those whose
+    // consumer reads only the offset, and those whose token cannot contain a line terminator.
+    static ALWAYS_INLINE JSTextPosition endPositionOnStartLine(const JSToken& token)
     {
-        return m_token.m_endPosition;
+        return JSTextPosition(token.m_startPosition.line, token.m_endOffset, token.m_startPosition.lineStartOffset);
     }
-    
+
+    ALWAYS_INLINE JSTextPosition tokenEndPosition()
+    {
+        return endPositionOnStartLine(m_token);
+    }
+
     ALWAYS_INLINE unsigned tokenLineStart()
     {
         return m_token.m_startPosition.lineStartOffset;
@@ -1900,7 +1913,7 @@ private:
     
     JSTextPosition lastTokenEndPosition() const
     {
-        return JSTextPosition(m_lastTokenLocation.line, m_lastTokenLocation.endOffset, m_lastTokenLocation.lineStartOffset);
+        return m_lastTokenLocation.endPosition();
     }
 
     bool hasError() const
@@ -2060,7 +2073,7 @@ private:
         m_token.m_startPosition.line = lexerState.lastTokenLocation.line;
         m_token.m_startPosition.offset = lexerState.lastTokenLocation.startOffset;
         m_token.m_startPosition.lineStartOffset = lexerState.lastTokenLocation.lineStartOffset;
-        m_token.m_endPosition.offset = lexerState.lastTokenLocation.endOffset;
+        m_token.m_endOffset = lexerState.lastTokenLocation.endOffset;
         nextWithoutClearingLineTerminator();
     }
 
@@ -2121,8 +2134,10 @@ private:
     // do not rearrange without careful analysis.
     VM& m_vm;
     JSToken m_token;
-    // offset 64
-    const SourceCode* m_source;
+    // offset 64, requested rather than implied: m_vm and m_token do not fill a line between
+    // them, and the fields below have measured offsets to keep. The 8 bytes this leaves unused
+    // are the cheapest place in the class to put a future hot field.
+    JSC_CACHE_LINE_ALIGNED const SourceCode* m_source;
     ParserArena m_parserArena;
     // offset 128
     std::unique_ptr<LexerType> m_lexer;

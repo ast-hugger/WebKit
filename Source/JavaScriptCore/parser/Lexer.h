@@ -71,7 +71,7 @@ public:
     bool nextTokenIsColon();
     int lineNumber() const { return m_lineNumber; }
     ALWAYS_INLINE int currentOffset() const { return offsetFromSourcePtr(m_code); }
-    ALWAYS_INLINE int currentLineStartOffset() const { return offsetFromSourcePtr(m_lineStart); }
+    ALWAYS_INLINE int currentLineStartOffset() const { return m_lineStartOffset; }
     ALWAYS_INLINE JSTextPosition currentPosition() const
     {
         return JSTextPosition(m_lineNumber, currentOffset(), currentLineStartOffset());
@@ -105,7 +105,7 @@ public:
         m_lexErrorMessage = String();
 
         m_code = sourcePtrFromOffset(offset);
-        m_lineStart = sourcePtrFromOffset(lineStartOffset);
+        m_lineStartOffset = lineStartOffset;
         ASSERT(currentOffset() >= currentLineStartOffset());
 
         m_buffer8.shrink(0);
@@ -128,8 +128,8 @@ public:
     ALWAYS_INLINE StringView getToken(const JSToken& token)
     {
         SourceProvider* sourceProvider = m_source->provider();
-        ASSERT_WITH_MESSAGE(token.m_startPosition.offset <= token.m_endPosition.offset, "Calling this function with the baked token.");
-        return sourceProvider->getRange(token.m_startPosition.offset, token.m_endPosition.offset);
+        ASSERT_WITH_MESSAGE(token.m_startPosition.offset <= token.m_endOffset, "Calling this function with the baked token.");
+        return sourceProvider->getRange(token.m_startPosition.offset, token.m_endOffset);
     }
 
     size_t codeLength() { return m_codeEnd - m_codeStart; }
@@ -202,8 +202,6 @@ private:
     template <unsigned length>
     ALWAYS_INLINE bool consume(const char (&input)[length]);
 
-    void fillTokenInfo(JSToken*, JSTextPosition endPosition);
-
     static constexpr size_t initialReadBufferCapacity = 32;
 
     // Fields up to m_sourceURLDirective are arranged according to access frequency
@@ -213,7 +211,9 @@ private:
     const T* m_code;
     const T* m_codeStart;
     const T* m_codeEnd;
-    const T* m_lineStart;
+    // Held as an offset rather than a pointer: it is read once per token and written once per
+    // line terminator, and minified sources have far more of the former than the latter.
+    int m_lineStartOffset;
     String m_lexErrorMessage;
     int m_lineNumber;
     T m_current;

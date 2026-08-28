@@ -147,7 +147,7 @@ Parser<LexerType>::Parser(VM& vm, const SourceCode& source, ImplementationVisibi
     m_token.m_startPosition.line = source.firstLine().oneBasedInt();
     m_token.m_startPosition.offset = source.startOffset();
     m_token.m_startPosition.lineStartOffset = source.startOffset();
-    m_token.m_endPosition.offset = source.startOffset();
+    m_token.m_endOffset = source.startOffset();
     m_functionCache = vm.addSourceProviderCache(source.provider());
 
     Scope* scope = pushScope();
@@ -1082,7 +1082,7 @@ template <class TreeBuilder> TreeExpression Parser<LexerType>::parseVariableDecl
         }
     } while (match(COMMA));
     if (lastIdent)
-        lastPattern = context.createBindingLocation(lastIdentToken.location(), *lastIdent, lastIdentToken.m_startPosition, lastIdentToken.m_endPosition, assignmentContext);
+        lastPattern = context.createBindingLocation(lastIdentToken.location(), *lastIdent, lastIdentToken.m_startPosition, endPositionOnStartLine(lastIdentToken), assignmentContext);
 
     return head;
 }
@@ -1152,7 +1152,7 @@ template <class TreeBuilder> TreeDestructuringPattern Parser<LexerType>::createB
         semanticFailIfFalse(exportName(name), "Cannot export a duplicate name '", name.impl(), "'");
         m_moduleScopeData->exportBinding(name);
     }
-    return context.createBindingLocation(token.location(), name, token.m_startPosition, token.m_endPosition, bindingContext);
+    return context.createBindingLocation(token.location(), name, token.m_startPosition, endPositionOnStartLine(token), bindingContext);
 }
 
 template <typename LexerType>
@@ -2015,7 +2015,7 @@ template <class TreeBuilder> TreeStatement Parser<LexerType>::parseTryStatement(
             if (matchSpecIdentifier()) {
                 catchScope->setIsSimpleCatchParameterScope();
                 ident = m_token.m_data.ident;
-                catchPattern = context.createBindingLocation(m_token.location(), *ident, m_token.m_startPosition, m_token.m_endPosition, AssignmentContext::DeclarationStatement);
+                catchPattern = context.createBindingLocation(m_token.location(), *ident, m_token.m_startPosition, tokenEndPosition(), AssignmentContext::DeclarationStatement);
                 next();
                 failIfTrueIfStrict(catchScope->declareLexicalVariable(ident, false) & DeclarationResult::InvalidStrictMode, "Cannot declare a catch variable named '", ident->impl(), "' in strict mode");
             } else {
@@ -2663,7 +2663,7 @@ template <class TreeBuilder> bool Parser<LexerType>::parseFunctionInfo(TreeBuild
             if (endColumnIsOnStartLine)
                 m_token.m_startPosition.lineStartOffset = currentLineStartOffset;
 
-            m_lexer->setOffset(m_token.m_endPosition.offset, m_token.m_startPosition.lineStartOffset);
+            m_lexer->setOffset(m_token.m_endOffset, m_token.m_startPosition.lineStartOffset);
             m_lexer->setLineNumber(m_token.m_startPosition.line);
 
             switch (functionBodyType) {
@@ -4103,7 +4103,7 @@ template <class TreeBuilder> TreeStatement Parser<LexerType>::parseExportDeclara
             semanticFailIfTrue(declarationResult & DeclarationResult::InvalidDuplicateDeclaration, "Only one 'default' export is allowed");
 
             TreeExpression assignment = context.createAssignResolve(location, m_vm.propertyNames->starDefaultPrivateName, expression, start, start, tokenEndPosition(), AssignmentContext::ConstDeclarationStatement);
-            result = context.createExprStatement(location, assignment, start, tokenEndPosition());
+            result = context.createExprStatement(location, assignment, start, m_token.m_endOffset);
             failIfFalse(autoSemiColon(), "Expected a ';' following a targeted export declaration");
         }
         failIfFalse(result, "Cannot parse the declaration");
@@ -4816,7 +4816,9 @@ namedProperty:
     case DOTDOTDOT: {
         auto spreadLocation = m_token.location();
         auto start = m_token.m_startPosition;
-        auto divot = m_token.m_endPosition;
+        // ObjectSpreadExpressionNode passes this divot to emitExpressionInfo, which reads its
+        // line. '...' cannot contain a line terminator, so the start line is the end line.
+        auto divot = tokenEndPosition();
         next();
         TreeExpression elem = parseAssignmentExpression(context);
         failIfFalse(elem, "Cannot parse subject of a spread operation");
@@ -4991,7 +4993,7 @@ template <class TreeBuilder> TreeExpression Parser<LexerType>::parseArrayLiteral
     if (match(DOTDOTDOT)) [[unlikely]] {
         auto spreadLocation = m_token.location();
         auto start = m_token.m_startPosition;
-        auto divot = m_token.m_endPosition;
+        auto divot = tokenEndPosition();
         next();
         auto spreadExpr = parseAssignmentExpression(context);
         failIfFalse(spreadExpr, "Cannot parse subject of a spread operation");
@@ -5015,7 +5017,7 @@ template <class TreeBuilder> TreeExpression Parser<LexerType>::parseArrayLiteral
         if (match(DOTDOTDOT)) [[unlikely]] {
             auto spreadLocation = m_token.location();
             auto start = m_token.m_startPosition;
-            auto divot = m_token.m_endPosition;
+            auto divot = tokenEndPosition();
             next();
             TreeExpression elem = parseAssignmentExpression(context);
             failIfFalse(elem, "Cannot parse subject of a spread operation");
@@ -5358,7 +5360,7 @@ template <class TreeBuilder> TreeArguments Parser<LexerType>::parseArguments(Tre
         return context.createArguments();
     }
     auto argumentsStart = m_token.m_startPosition;
-    auto argumentsDivot = m_token.m_endPosition;
+    auto argumentsDivot = tokenEndPosition();
 
     int initialAssignments = m_parserState.assignmentCount;
     ArgumentType argType = ArgumentType::Normal;
@@ -5404,7 +5406,7 @@ template <class TreeBuilder> TreeExpression Parser<LexerType>::parseArgument(Tre
     if (match(DOTDOTDOT)) [[unlikely]] {
         JSTokenLocation spreadLocation(tokenLocation());
         auto start = m_token.m_startPosition;
-        auto divot = m_token.m_endPosition;
+        auto divot = tokenEndPosition();
         next();
         TreeExpression spreadExpr = parseAssignmentExpression(context);
         propagateError();
