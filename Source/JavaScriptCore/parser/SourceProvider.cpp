@@ -144,5 +144,92 @@ BaseWebAssemblySourceProvider::BaseWebAssemblySourceProvider(const SourceOrigin&
 }
 #endif
 
+template<typename CharType>
+Vector<unsigned> LineStartTable::build(std::span<const CharType> text)
+{
+    Vector<unsigned> lineStarts;
+    // Element 0 is the start of the first line, so the table is never empty and a line number is an
+    // index into it.
+    lineStarts.append(0);
+
+    // findLineTerminator is find-first rather than find-all, which suits this: terminators are
+    // sparse -- roughly one per line against one token per few bytes -- so each call consumes a
+    // whole line of source. Nothing here needs a retained per-byte bitmap, which is the awkward
+    // thing to obtain on ARM.
+    const CharType* const begin = text.data();
+    const CharType* const end = std::to_address(text.end());
+    size_t index = 0;
+    while (index < text.size()) {
+        const CharType* found = findLineTerminator(text.subspan(index));
+        if (found == end)
+            break;
+        // Recorded even when the next line starts at the end of the text: a source ending in a
+        // terminator has a final empty line, because that is where the lexer's cursor ends up, and
+        // agreeing with the lexer is this table's whole contract.
+        size_t next = lineStartAfterTerminator(text, static_cast<size_t>(found - begin));
+        lineStarts.append(static_cast<unsigned>(next));
+        // Resuming past the whole terminator is what keeps CRLF a single line break: starting again
+        // at the LF would count it a second time.
+        index = next;
+    }
+
+    lineStarts.shrinkToFit();
+    return lineStarts;
+}
+
+const Vector<unsigned>& LineStartTable::ensureBuilt(StringView text)
+{
+    if (!m_lineStarts) {
+        m_lineStarts = text.is8Bit() ? build(text.span8()) : build(text.span16());
+        m_builtForLength = text.length();
+    }
+    // Built once from one source; handing it a different one would silently return positions for the
+    // wrong text.
+    ASSERT(m_builtForLength == text.length());
+    return *m_lineStarts;
+}
+
+auto LineStartTable::positionInfoForOffset(StringView text, unsigned offset) -> PositionInfo
+{
+    Locker locker { m_lock };
+    const Vector<unsigned>& lineStarts = ensureBuilt(text);
+
+    // The greatest line whose start is at or before `offset`. An offset past the end of the text is
+    // clamped to the last line rather than refused: callers reach here from error reporting, where
+    // answering approximately beats not answering.
+    size_t line = lineStarts.size() - 1;
+    if (offset < lineStarts.last()) {
+        // upper_bound gives the first line starting strictly after the offset.
+        auto it = std::upper_bound(lineStarts.begin(), lineStarts.end(), offset);
+        ASSERT(it != lineStarts.begin());
+        line = static_cast<size_t>(it - lineStarts.begin()) - 1;
+    }
+
+    unsigned lineStart = lineStarts[line];
+    unsigned length = text.length();
+    unsigned lineEnd = (line + 1 < lineStarts.size()) ? lineStarts[line + 1] : length;
+    // A non-final line's end came from the next line's start, which is past the terminator, so step
+    // back over it -- two characters for CRLF, one otherwise.
+    if (lineEnd < length) {
+        if (lineEnd >= 2 && isCRLFPair(text[lineEnd - 2], text[lineEnd - 1]))
+            lineEnd -= 2;
+        else
+            lineEnd -= 1;
+    }
+
+    return {
+        static_cast<unsigned>(line),
+        offset > lineStart ? offset - lineStart : 0,
+        lineStart,
+        lineEnd,
+    };
+}
+
+unsigned LineStartTable::lineCount(StringView text)
+{
+    Locker locker { m_lock };
+    return ensureBuilt(text).size();
+}
+
 } // namespace JSC
 

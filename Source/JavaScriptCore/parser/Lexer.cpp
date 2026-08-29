@@ -722,7 +722,7 @@ void Lexer<T>::shiftLineTerminator()
     T prev = m_current;
     shift();
 
-    if (prev == '\r' && m_current == '\n')
+    if (isCRLFPair(prev, m_current))
         shift();
 
     ++m_lineNumber;
@@ -2057,6 +2057,41 @@ ALWAYS_INLINE bool Lexer<T>::consume(const char (&input)[length])
 }
 
 template <typename T>
+void Lexer<T>::validateLineStartTableAt(const JSTextPosition& position)
+{
+    // The differential gate for the derived line-start table (JSC_validateLineStartTable=1): for
+    // every token, the table's answer for the token's start offset must equal what the lexer's
+    // incremental count produced. Running it over the test suite makes the suite the corpus.
+    //
+    // Only comparable when the lexer's count is genuinely provider-absolute, which requires the
+    // SourceCode to begin at the start of the provider's text. For a sub-range -- a function
+    // reparse, or a builtin -- setCode() seeds m_lineStartOffset to source.startOffset(), so on
+    // that range's *first* line the lexer reports the range's start rather than the real line
+    // start, and m_lineNumber is seeded from the enclosing parse rather than counted. Both are
+    // deliberate: it is what makes a reparsed function's first-line columns relative to the
+    // function, which UnlinkedFunctionExecutable::linkedStartColumn then re-biases. Those offsets
+    // are still covered here, by the enclosing top-level parse that produced them.
+    if (m_source->startOffset() || m_source->firstLine().oneBasedInt() != 1)
+        return;
+
+    SourceProvider* provider = m_source->provider();
+    auto info = provider->positionInfoForOffset(static_cast<unsigned>(position.offset));
+
+    if (static_cast<unsigned>(position.lineStartOffset) != info.lineStart) {
+        dataLogLn("validateLineStartTable: lineStart mismatch at offset ", position.offset,
+            ": lexer ", position.lineStartOffset, ", table ", info.lineStart);
+        CRASH();
+    }
+
+    // The lexer's line is one-based, the table's is zero-based.
+    if (static_cast<unsigned>(position.line) != info.line + 1) {
+        dataLogLn("validateLineStartTable: line mismatch at offset ", position.offset,
+            ": lexer ", position.line, ", table one-based ", info.line + 1);
+        CRASH();
+    }
+}
+
+template <typename T>
 bool Lexer<T>::nextTokenIsColon()
 {
     const T* code = m_code;
@@ -2080,30 +2115,7 @@ NEVER_INLINE std::optional<JSTokenType> Lexer<T>::scanSingleLineComment(JSToken*
 
     auto endOffset = currentOffset();
 
-    using UnsignedType = SameSizeUnsignedInteger<T>;
-    constexpr auto lineFeedMask = SIMD::splat<UnsignedType>('\n');
-    constexpr auto carriageReturnMask = SIMD::splat<UnsignedType>('\r');
-    constexpr auto u2028Mask = SIMD::splat<UnsignedType>(static_cast<UnsignedType>(0x2028));
-    constexpr auto u2029Mask = SIMD::splat<UnsignedType>(static_cast<UnsignedType>(0x2029));
-    auto vectorMatch = [&](auto input) ALWAYS_INLINE_LAMBDA {
-        auto lineFeed = SIMD::equal(input, lineFeedMask);
-        auto carriageReturn = SIMD::equal(input, carriageReturnMask);
-        if constexpr (std::is_same_v<T, Latin1Character>) {
-            auto mask = SIMD::bitOr(lineFeed, carriageReturn);
-            return SIMD::findFirstNonZeroIndex(mask);
-        } else {
-            auto u2028 = SIMD::equal(input, u2028Mask);
-            auto u2029 = SIMD::equal(input, u2029Mask);
-            auto mask = SIMD::bitOr(lineFeed, carriageReturn, u2028, u2029);
-            return SIMD::findFirstNonZeroIndex(mask);
-        }
-    };
-
-    auto scalarMatch = [&](auto character) ALWAYS_INLINE_LAMBDA {
-        return isLineTerminator(character);
-    };
-
-    m_code = SIMD::find(std::span { currentSourcePtr(), m_codeEnd }, vectorMatch, scalarMatch);
+    m_code = findLineTerminator(std::span { currentSourcePtr(), m_codeEnd });
     if (m_code == m_codeEnd) {
         m_current = 0;
         tokenRecord->m_endOffset = endOffset;
@@ -2138,6 +2150,9 @@ start:
 
     ASSERT(currentOffset() >= currentLineStartOffset());
     tokenRecord->m_startPosition = currentPosition();
+
+    if (Options::validateLineStartTable()) [[unlikely]]
+        validateLineStartTableAt(tokenRecord->m_startPosition);
 
     Latin1Character type = m_current;
     if constexpr (!std::is_same_v<T, Latin1Character>) {

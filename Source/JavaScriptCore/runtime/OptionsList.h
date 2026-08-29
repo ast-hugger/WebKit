@@ -112,6 +112,7 @@ bool hasCapacityToUseLargeGigacage();
     v(Bool, dumpGeneratedBytecodes, false, Normal, nullptr) \
     v(Bool, dumpBytecodeLivenessResults, false, Normal, nullptr) \
     v(Bool, validateBytecode, false, Normal, nullptr) \
+    v(Bool, validateLineStartTable, false, Normal, "cross-checks SourceProvider's derived line-start table against the lexer's incremental line count on every token"_s) \
     v(Bool, forceDebuggerBytecodeGeneration, false, Normal, nullptr) \
     v(Bool, debuggerTriggersBreakpointException, false, Normal, "Using the debugger statement will trigger an breakpoint exception (Useful when lldbing)"_s) \
     v(Bool, verboseWasmDebugger, false, Normal, nullptr) \

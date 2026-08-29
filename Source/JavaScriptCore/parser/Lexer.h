@@ -202,6 +202,8 @@ private:
     template <unsigned length>
     ALWAYS_INLINE bool consume(const char (&input)[length]);
 
+    NEVER_INLINE void validateLineStartTableAt(const JSTextPosition&);
+
     static constexpr size_t initialReadBufferCapacity = 32;
 
     // Fields up to m_sourceURLDirective are arranged according to access frequency
@@ -272,13 +274,13 @@ ALWAYS_INLINE bool Lexer<char16_t>::isWhiteSpace(char16_t ch)
 template <>
 ALWAYS_INLINE bool Lexer<Latin1Character>::isLineTerminator(Latin1Character ch)
 {
-    return ch == '\r' || ch == '\n';
+    return JSC::isLineTerminator(ch);
 }
 
 template <>
 ALWAYS_INLINE bool Lexer<char16_t>::isLineTerminator(char16_t ch)
 {
-    return ch == '\r' || ch == '\n' || (ch & ~1) == 0x2028;
+    return JSC::isLineTerminator(ch);
 }
 
 template <typename T>
