@@ -2186,21 +2186,55 @@ void CodeBlock::removeExceptionHandlerForCallSite(DisposableCallSiteIndex callSi
     RELEASE_ASSERT_NOT_REACHED();
 }
 
+// Line and column for a divot, derived from the source rather than read from expression info.
+//
+// The divot stored in expression info is relative to this CodeBlock's SourceCode, so it is shifted
+// back to a provider-absolute offset before the lookup. What comes back is provider-absolute and
+// zero-based, and a one-based user-facing coordinate is then just +1 on each -- which is the whole
+// of the bias arithmetic. The stored form needs more: its line is relative to the SourceCode's first
+// line, its column is measured from the SourceCode's start on that first line only, so consulting it
+// means adding ownerExecutable()->firstLine() and, on the first line alone, startColumn(). Deriving
+// from the provider makes the first-line special case disappear rather than moving it.
+LineColumn CodeBlock::derivedLineColumnForDivot(unsigned divotRelativeToSource) const
+{
+    auto info = source().provider()->positionInfoForOffset(divotRelativeToSource + source().startOffset());
+    return { info.line + 1, info.column + 1 };
+}
+
+void CodeBlock::validateDerivedLineColumn(unsigned divotRelativeToSource, LineColumn stored) const
+{
+    LineColumn derived = derivedLineColumnForDivot(divotRelativeToSource);
+    if (derived.line == stored.line && derived.column == stored.column)
+        return;
+    dataLogLn("validateDerivedLineColumn: mismatch for divot ", divotRelativeToSource,
+        " (source starts at ", source().startOffset(), ", firstLine ", ownerExecutable()->firstLine(),
+        ", startColumn ", firstLineColumnOffset(), "): stored ", stored.line, ":", stored.column,
+        ", derived ", derived.line, ":", derived.column);
+    CRASH();
+}
+
 LineColumn CodeBlock::lineColumnForBytecodeIndex(BytecodeIndex bytecodeIndex) const
 {
     RELEASE_ASSERT(bytecodeIndex.offset() < instructions().size());
     auto lineColumn = m_unlinkedCode->lineColumnForBytecodeIndex(bytecodeIndex);
     lineColumn.column += lineColumn.line ? 1 : firstLineColumnOffset();
     lineColumn.line += ownerExecutable()->firstLine();
+    if (Options::validateDerivedLineColumn()) [[unlikely]] {
+        auto entry = m_unlinkedCode->expressionInfoForBytecodeIndex(bytecodeIndex);
+        validateDerivedLineColumn(entry.divot, lineColumn);
+    }
     return lineColumn;
 }
 
 ExpressionInfo::Entry CodeBlock::expressionInfoForBytecodeIndex(BytecodeIndex bytecodeIndex) const
 {
     auto entry = m_unlinkedCode->expressionInfoForBytecodeIndex(bytecodeIndex);
+    unsigned divotRelativeToSource = entry.divot;
     entry.divot += sourceOffset();
     entry.lineColumn.column += entry.lineColumn.line ? 1 : firstLineColumnOffset();
     entry.lineColumn.line += ownerExecutable()->firstLine();
+    if (Options::validateDerivedLineColumn()) [[unlikely]]
+        validateDerivedLineColumn(divotRelativeToSource, entry.lineColumn);
     return entry;
 }
 
