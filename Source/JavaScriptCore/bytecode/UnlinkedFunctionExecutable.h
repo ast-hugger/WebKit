@@ -110,6 +110,10 @@ public:
     SuperBinding superBinding() const { return static_cast<SuperBinding>(m_superBinding); }
 
     unsigned lineCount() const { return m_lineCount; }
+    // TODO (source positions work): these two, and the endColumnIsOnStartLine branch in
+    // CodeCache, are three spellings of one rule: a column is biased by the embedding
+    // only on the first line. Deriving from the provider removes the special case
+    // rather than relocating it (stage 5).
     unsigned linkedStartColumn(unsigned parentStartColumn) const { return m_unlinkedBodyStartColumn + (!m_firstLineOffset ? parentStartColumn : 1); }
     unsigned linkedEndColumn(unsigned startColumn) const { return m_unlinkedBodyEndColumn + (!m_lineCount ? startColumn : 1); }
 
@@ -287,6 +291,11 @@ private:
         return VM::useUnlinkedCodeBlockJettisoning() && !m_isGeneratedFromCache;
     }
 
+    // TODO (source positions work): these four -- m_firstLineOffset, m_lineCount,
+    // m_unlinkedBodyStartColumn, m_unlinkedBodyEndColumn -- are computed for every function
+    // at parse time and are derivable from the five offsets beside them once the line-start
+    // table exists. Until they go, a table is built on every parse containing a function, so
+    // the laziness the design rests on is not yet real (stage 5).
     unsigned m_firstLineOffset : 31;
     unsigned m_isGeneratedFromCache : 1;
     unsigned m_lineCount : 31;

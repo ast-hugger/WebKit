@@ -256,12 +256,6 @@ struct ExpressionInfo::Diff {
         case FieldID::End:
             end += cast<unsigned, bitCount>(value);
             break;
-        case FieldID::Line:
-            line += cast<int, bitCount>(value);
-            break;
-        case FieldID::Column:
-            column += cast<int, bitCount>(value);
-            break;
         }
     }
 
@@ -271,24 +265,18 @@ struct ExpressionInfo::Diff {
         divot = 0;
         start = 0;
         end = 0;
-        line = 0;
-        column = 0;
     }
 
     unsigned instPC { 0 };
     int divot { 0 };
     unsigned start { 0 };
     unsigned end { 0 };
-    int line { 0 };
-    int column { 0 };
 };
 
-// The type for divot, line, and column is intentionally int, not unsigned. These are
-// diff values which can be negative. These asserts are just here to draw attention to
-// this comment in case anyone naively changes their type.
+// The type for divot is intentionally int, not unsigned: it is a diff value which can be
+// negative. This assert is just here to draw attention to this comment in case anyone naively
+// changes its type.
 static_assert(std::same_as<decltype(ExpressionInfo::Diff::divot), int>);
-static_assert(std::same_as<decltype(ExpressionInfo::Diff::line), int>);
-static_assert(std::same_as<decltype(ExpressionInfo::Diff::column), int>);
 
 bool ExpressionInfo::EncodedInfo::isAbsInstPC() const
 {
@@ -371,16 +359,11 @@ auto ExpressionInfo::Encoder::encodeBasic(const Diff& diff) -> EncodedInfo
     ASSERT(diff.start <= maxStartValue);
     ASSERT(diff.end <= maxEndValue);
     unsigned biasedDivot = diff.divot + divotBias;
-    unsigned biasedLine = diff.line + lineBias;
-    unsigned biasedColumn = diff.column == INT_MAX ? sameAsDivotValue : diff.column + columnBias;
 
     ASSERT(biasedDivot <= maxBiasedDivotValue);
-    ASSERT(biasedLine <= maxBiasedLineValue);
-    ASSERT(biasedColumn <= maxBiasedColumnValue || (diff.column == INT_MAX && biasedColumn == sameAsDivotValue));
 
     unsigned word = diff.instPC << instPCShift | biasedDivot << divotShift
-        | diff.start << startShift | diff.end << endShift
-        | biasedLine << lineShift | biasedColumn << columnShift;
+        | diff.start << startShift | diff.end << endShift;
     return { word };
 }
 
@@ -510,10 +493,10 @@ emitExtensionIsland:
         m_expressionInfoEncodedInfo.append(encodeExtensionEnd());
 }
 
-void ExpressionInfo::Encoder::encode(InstPC instPC, unsigned divot, unsigned startOffset, unsigned endOffset, LineColumn lineColumn)
+void ExpressionInfo::Encoder::encode(InstPC instPC, unsigned divot, unsigned startOffset, unsigned endOffset)
 {
     unsigned numWides = 0;
-    std::array<Wide, 6> wides;
+    std::array<Wide, 4> wides;
 
     auto appendWide = [&] (FieldID id, unsigned value) {
         wides[numWides++] = { value, id };
@@ -536,19 +519,10 @@ void ExpressionInfo::Encoder::encode(InstPC instPC, unsigned divot, unsigned sta
     diff.start = startOffset;
     diff.end = endOffset;
 
-    diff.line = lineColumn.line - m_entry.lineColumn.line;
-    if (diff.line)
-        m_entry.lineColumn.column = 0;
-
-    diff.column = lineColumn.column - m_entry.lineColumn.column;
-
-    bool sameDivotAndColumnDiff = diff.column == diff.divot;
-
-    // Divot, line, and column diffs can negative values. To maximize the chance that they fit
-    // in a Basic word, we apply a bias to these values. InstPC is always monotonically increasing
-    // i.e. it's diff is always positive and unsigned. Start and end are already relative to divot
-    // i.e. their diffs are always positive and unsigned. Hence, instPC, start, and end do not
-    // require a bias.
+    // A divot diff can be negative. To maximize the chance that it fits in a Basic word, a bias
+    // is applied. InstPC is always monotonically increasing, i.e. its diff is always positive and
+    // unsigned. Start and end are already relative to divot, i.e. their diffs are always positive
+    // and unsigned. Hence instPC, start and end do not require a bias.
 
     // Encode header:
     if (diff.instPC > maxInstPCValue) {
@@ -574,23 +548,8 @@ void ExpressionInfo::Encoder::encode(InstPC instPC, unsigned divot, unsigned sta
         diff.end = 0;
     }
 
-    // Encode line:
-    if (diff.line + lineBias > maxBiasedLineValue) {
-        appendWide(FieldID::Line, diff.line);
-        diff.line = 0;
-    }
-
-    // Encode column:
-    if (sameDivotAndColumnDiff)
-        diff.column = INT_MAX;
-    else if (diff.column + columnBias > maxBiasedColumnValue) {
-        appendWide(FieldID::Column, diff.column);
-        diff.column = 0;
-    }
-
     m_entry.instPC = instPC;
     m_entry.divot = divot;
-    m_entry.lineColumn = lineColumn;
 
     // Canonicalize the wide EncodedInfo.
     {
@@ -662,8 +621,6 @@ bool ExpressionInfo::Encoder::fits(Wide wide)
     case FieldID::End:
         return fits<unsigned, bitCount>(wide.value);
     case FieldID::Divot:
-    case FieldID::Line:
-    case FieldID::Column:
         return fits<int, bitCount>(wide.value);
     }
     return false; // placate GCC.
@@ -869,16 +826,6 @@ IterationStatus ExpressionInfo::Decoder::decode(std::optional<ExpressionInfo::In
         diff.end += (value >> endShift) & endMask;
         m_entry.endOffset = diff.end; // Not cummulative.
 
-        diff.line += cast<int, lineBits>((value >> lineShift) - lineBias);
-        if (diff.line)
-            m_entry.lineColumn.column = 0;
-        m_entry.lineColumn.line += diff.line;
-
-        static constexpr unsigned columnMask = (1 << columnBits) - 1;
-
-        unsigned columnField = (value >> columnShift) & columnMask;
-        diff.column += columnField == sameAsDivotValue ? diff.divot : cast<int, columnBits>(columnField - columnBias);
-        m_entry.lineColumn.column += diff.column;
     }
 
     if (savedInfo) {
@@ -915,17 +862,6 @@ ExpressionInfo::ExpressionInfo(Vector<Chapter>&& chapters, Vector<EncodedInfo>&&
 size_t ExpressionInfo::byteSize() const
 {
     return totalSizeInBytes(m_numberOfChapters, m_numberOfEncodedInfo, m_numberOfEncodedInfoExtensions);
-}
-
-auto ExpressionInfo::lineColumnForInstPC(InstPC instPC) -> LineColumn
-{
-    auto iter = m_cachedLineColumns.find(instPC);
-    if (iter != m_cachedLineColumns.end())
-        return iter->value;
-
-    auto entry = entryForInstPC(instPC);
-    m_cachedLineColumns.add(instPC, entry.lineColumn);
-    return entry.lineColumn;
 }
 
 auto ExpressionInfo::findChapterEncodedInfoJustBelow(InstPC instPC) const -> EncodedInfo*
@@ -975,8 +911,6 @@ void ExpressionInfo::print(PrintStream& out, FieldID fieldID, unsigned value)
         out.print(cast<unsigned, bitCount>(value));
         break;
     case FieldID::Divot:
-    case FieldID::Line:
-    case FieldID::Column:
         out.print(cast<int, bitCount>(value));
         break;
     }
@@ -1054,9 +988,7 @@ void ExpressionInfo::dumpEncodedInfo(ExpressionInfo::EncodedInfo* start, Express
                 FieldID::InstPC, " ", cast<unsigned, instPCBits>(value >> instPCShift), " ",
                 FieldID::Divot, " ", cast<unsigned, divotBits>(value >> divotShift), " ",
                 FieldID::Start, " ", cast<unsigned, startBits>(value >> startShift), " ",
-                FieldID::End, " ", cast<unsigned, endBits>(value >> endShift), " ",
-                FieldID::Line, " ", cast<unsigned, lineBits>(value >> lineShift), " ",
-                FieldID::Column, " ", cast<unsigned, columnBits>(value >> columnShift));
+                FieldID::End, " ", cast<unsigned, endBits>(value >> endShift));
         }
         curr++;
     }

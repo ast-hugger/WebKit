@@ -627,16 +627,16 @@ namespace JSC {
                 return;
 
             unsigned sourceOffset = m_scopeNode->source().startOffset();
-            unsigned firstLine = m_scopeNode->source().firstLine().oneBasedInt();
 
             unsigned divotOffset = divot.offset - sourceOffset;
             unsigned startOffset = divot.offset - divotStart.offset;
             unsigned endOffset = divotEnd.offset - divot.offset;
 
-            unsigned line = divot.line;
-            ASSERT(line >= firstLine);
-            line -= firstLine;
-
+            // TODO (source positions work): the last line-derived logic here, and it is a filter
+            // rather than a value -- it drops the entry when the divot's recorded lineStartOffset is
+            // past its own offset, which JSTextPosition::checkConsistency notes does happen. Kept so
+            // that which entries get recorded is unchanged; it should go with the token's start line
+            // (stage 8), at which point a divot is an offset and cannot be inconsistent with itself.
             unsigned lineStart = divot.lineStartOffset;
             if (lineStart > sourceOffset)
                 lineStart -= sourceOffset;
@@ -646,10 +646,8 @@ namespace JSC {
             if (divotOffset < lineStart)
                 return;
 
-            unsigned column = divotOffset - lineStart;
-
             unsigned instructionOffset = instructions().size();
-            m_codeBlock->addExpressionInfo(instructionOffset, divotOffset, startOffset, endOffset, { line, column });
+            m_codeBlock->addExpressionInfo(instructionOffset, divotOffset, startOffset, endOffset);
         }
 
 

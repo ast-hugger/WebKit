@@ -2201,48 +2201,19 @@ LineColumn CodeBlock::derivedLineColumnForDivot(unsigned divotRelativeToSource) 
     return { info.line + 1, info.column + 1 };
 }
 
-void CodeBlock::validateDerivedLineColumn(unsigned divotRelativeToSource, LineColumn stored) const
-{
-    LineColumn derived = derivedLineColumnForDivot(divotRelativeToSource);
-    if (derived.line == stored.line && derived.column == stored.column)
-        return;
-    dataLogLn("validateDerivedLineColumn: mismatch for divot ", divotRelativeToSource,
-        " (source starts at ", source().startOffset(), ", firstLine ", ownerExecutable()->firstLine(),
-        ", startColumn ", firstLineColumnOffset(), "): stored ", stored.line, ":", stored.column,
-        ", derived ", derived.line, ":", derived.column);
-    CRASH();
-}
-
 LineColumn CodeBlock::lineColumnForBytecodeIndex(BytecodeIndex bytecodeIndex) const
 {
     RELEASE_ASSERT(bytecodeIndex.offset() < instructions().size());
-    // Derived from the divot rather than read from the line and column baked into expression info.
-    // Those are still recorded -- removing them is a separate change to ExpressionInfo's encoding --
-    // but nothing consults them any more, so JSC_validateDerivedLineColumn is what keeps the two in
-    // agreement until they go.
+    // Derived from the divot. Expression info records offsets only; line and column are a property
+    // of the source, looked up when someone actually asks.
     auto entry = m_unlinkedCode->expressionInfoForBytecodeIndex(bytecodeIndex);
-    LineColumn derived = derivedLineColumnForDivot(entry.divot);
-    if (Options::validateDerivedLineColumn()) [[unlikely]] {
-        auto stored = entry.lineColumn;
-        stored.column += stored.line ? 1 : firstLineColumnOffset();
-        stored.line += ownerExecutable()->firstLine();
-        validateDerivedLineColumn(entry.divot, stored);
-    }
-    return derived;
+    return derivedLineColumnForDivot(entry.divot);
 }
 
 ExpressionInfo::Entry CodeBlock::expressionInfoForBytecodeIndex(BytecodeIndex bytecodeIndex) const
 {
     auto entry = m_unlinkedCode->expressionInfoForBytecodeIndex(bytecodeIndex);
-    unsigned divotRelativeToSource = entry.divot;
     entry.divot += sourceOffset();
-    if (Options::validateDerivedLineColumn()) [[unlikely]] {
-        auto stored = entry.lineColumn;
-        stored.column += stored.line ? 1 : firstLineColumnOffset();
-        stored.line += ownerExecutable()->firstLine();
-        validateDerivedLineColumn(divotRelativeToSource, stored);
-    }
-    entry.lineColumn = derivedLineColumnForDivot(divotRelativeToSource);
     return entry;
 }
 

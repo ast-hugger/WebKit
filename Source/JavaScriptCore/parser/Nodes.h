@@ -420,6 +420,9 @@ namespace JSC {
         RegisterID* emitThrowReferenceError(BytecodeGenerator&, ASCIILiteral message, RegisterID* dst = nullptr);
 
     private:
+        // TODO (source positions work): three JSTextPositions, 36 bytes, of which only m_divot's
+        // line and lineStartOffset are ever read, and only inside emitExpressionInfo.
+        // Becomes a transposition-resistant range of three offsets, 12 bytes (stage 7).
         JSTextPosition m_divot;
         JSTextPosition m_divotStart;
         JSTextPosition m_divotEnd;

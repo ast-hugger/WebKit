@@ -571,6 +571,10 @@ void Lexer<T>::setCode(const SourceCode& source, ParserArena* arena)
     m_codeEnd = m_codeStart + source.endOffset();
     m_error = false;
     m_atLineStart = true;
+    // TODO (source positions work): m_lineNumber is seeded from source.firstLine() just below, which
+    // UnlinkedFunctionExecutable::linkedSourceCode computed from its parent. That loop exists
+    // only because lines are counted incrementally; with derivation a reparse needs no
+    // firstLine at all (stage 5).
     m_lineStartOffset = source.startOffset();
     m_lexErrorMessage = String();
     m_sourceURLDirective = String();

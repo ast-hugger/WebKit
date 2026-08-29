@@ -219,6 +219,9 @@ struct JSTextPosition {
     JSTextPosition operator-(int adjustment) const { return *this + (- adjustment); }
     JSTextPosition operator-(unsigned adjustment) const { return *this + (- static_cast<int>(adjustment)); }
 
+    // TODO (source positions work): this conversion is why the codebase is loose about whether a
+    // value is a position or an offset. It goes once offsets are their own type
+    // (stages 6 and 9).
     operator int() const { return offset; }
     explicit operator bool() const { return *this != JSTextPosition(); }
 
@@ -278,6 +281,9 @@ struct JSTokenLocation {
     //
     // The fix is to stop storing lines and derive them from the source on demand; see
     // ~/repos/logbook/2026-08-28-parser-lazy-source-positions/design.md, sections 3.1 and 4.2.
+    // TODO (source positions work): goes with its callers: the 40 lastTokenEndPosition() sites
+    // become offset reads, and the few that genuinely want a line get it from the
+    // line-start table (stage 6).
     JSTextPosition endPosition() const { return JSTextPosition(line, endOffset, lineStartOffset); }
 
     int line { 0 };

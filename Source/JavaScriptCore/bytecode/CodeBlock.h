@@ -285,11 +285,9 @@ public:
 
     LineColumn lineColumnForBytecodeIndex(BytecodeIndex) const;
 
-    // Line and column for a divot, derived from the source via SourceProvider's line-start table
-    // rather than from the values baked into expression info. Not yet the path anyone uses; see
-    // validateDerivedLineColumn.
+    // Line and column for a divot, derived from the source via SourceProvider's line-start table.
+    // Expression info records offsets only, so this is where a position becomes a coordinate.
     LineColumn derivedLineColumnForDivot(unsigned divotRelativeToSource) const;
-    void validateDerivedLineColumn(unsigned divotRelativeToSource, LineColumn stored) const;
     ExpressionInfo::Entry expressionInfoForBytecodeIndex(BytecodeIndex) const;
 
     std::optional<BytecodeIndex> bytecodeIndexFromCallSiteIndex(CallSiteIndex);

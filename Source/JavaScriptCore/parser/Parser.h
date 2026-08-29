@@ -1675,6 +1675,9 @@ private:
     // Callers fall into two groups, audited in the logbook at
     // 2026-08-26-perf-octane-code-load/item-a-token-position-bookkeeping.md: those whose
     // consumer reads only the offset, and those whose token cannot contain a line terminator.
+    // TODO (source positions work): this exists because a token's end has no recorded line. Once
+    // the start line is dropped too (stage 8, worth the +0.13pp/+1.6pp residual) both
+    // this and the borrowed line it names disappear.
     static ALWAYS_INLINE JSTextPosition endPositionOnStartLine(const JSToken& token)
     {
         return JSTextPosition(token.m_startPosition.line, token.m_endOffset, token.m_startPosition.lineStartOffset);
