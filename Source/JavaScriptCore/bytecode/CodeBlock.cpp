@@ -2216,14 +2216,19 @@ void CodeBlock::validateDerivedLineColumn(unsigned divotRelativeToSource, LineCo
 LineColumn CodeBlock::lineColumnForBytecodeIndex(BytecodeIndex bytecodeIndex) const
 {
     RELEASE_ASSERT(bytecodeIndex.offset() < instructions().size());
-    auto lineColumn = m_unlinkedCode->lineColumnForBytecodeIndex(bytecodeIndex);
-    lineColumn.column += lineColumn.line ? 1 : firstLineColumnOffset();
-    lineColumn.line += ownerExecutable()->firstLine();
+    // Derived from the divot rather than read from the line and column baked into expression info.
+    // Those are still recorded -- removing them is a separate change to ExpressionInfo's encoding --
+    // but nothing consults them any more, so JSC_validateDerivedLineColumn is what keeps the two in
+    // agreement until they go.
+    auto entry = m_unlinkedCode->expressionInfoForBytecodeIndex(bytecodeIndex);
+    LineColumn derived = derivedLineColumnForDivot(entry.divot);
     if (Options::validateDerivedLineColumn()) [[unlikely]] {
-        auto entry = m_unlinkedCode->expressionInfoForBytecodeIndex(bytecodeIndex);
-        validateDerivedLineColumn(entry.divot, lineColumn);
+        auto stored = entry.lineColumn;
+        stored.column += stored.line ? 1 : firstLineColumnOffset();
+        stored.line += ownerExecutable()->firstLine();
+        validateDerivedLineColumn(entry.divot, stored);
     }
-    return lineColumn;
+    return derived;
 }
 
 ExpressionInfo::Entry CodeBlock::expressionInfoForBytecodeIndex(BytecodeIndex bytecodeIndex) const
@@ -2231,10 +2236,13 @@ ExpressionInfo::Entry CodeBlock::expressionInfoForBytecodeIndex(BytecodeIndex by
     auto entry = m_unlinkedCode->expressionInfoForBytecodeIndex(bytecodeIndex);
     unsigned divotRelativeToSource = entry.divot;
     entry.divot += sourceOffset();
-    entry.lineColumn.column += entry.lineColumn.line ? 1 : firstLineColumnOffset();
-    entry.lineColumn.line += ownerExecutable()->firstLine();
-    if (Options::validateDerivedLineColumn()) [[unlikely]]
-        validateDerivedLineColumn(divotRelativeToSource, entry.lineColumn);
+    if (Options::validateDerivedLineColumn()) [[unlikely]] {
+        auto stored = entry.lineColumn;
+        stored.column += stored.line ? 1 : firstLineColumnOffset();
+        stored.line += ownerExecutable()->firstLine();
+        validateDerivedLineColumn(divotRelativeToSource, stored);
+    }
+    entry.lineColumn = derivedLineColumnForDivot(divotRelativeToSource);
     return entry;
 }
 
